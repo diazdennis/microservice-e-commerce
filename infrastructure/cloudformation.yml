@@ -20,12 +20,12 @@ Parameters:
 
   GitHubRepoUrl:
     Type: String
-    Description: GitHub repository URL to clone (e.g., https://github.com/username/e-commerce-microservices.git)
+    Description: 'GitHub repository URL to clone (e.g., https://github.com/username/e-commerce-microservices.git)'
     Default: https://github.com/diazdennis/microservice-e-commerce.git
 
   AppKey:
     Type: String
-    Description: Laravel application key (generate with: openssl rand -base64 32)
+    Description: 'Laravel application key (generate with: openssl rand -base64 32)'
     NoEcho: true
 
   MySQLRootPassword:
@@ -63,7 +63,7 @@ Parameters:
   MailFromName:
     Type: String
     Description: Email sender name
-    Default: E-Commerce Store
+    Default: 'E-Commerce Store'
 
 Resources:
   # VPC and Networking
