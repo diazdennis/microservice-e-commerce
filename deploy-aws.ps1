@@ -29,28 +29,39 @@ try {
 
 # Fetch latest AMI ID
 Write-Host "[*] Fetching latest Amazon Linux 2023 AMI ID..." -ForegroundColor Cyan
-try {
-    $amiId = aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64 --region $Region --query 'Parameter.Value' --output text 2>&1
-    if ($LASTEXITCODE -eq 0 -and $amiId -and $amiId -notmatch "error") {
-        Write-Host "[OK] Found AMI ID: $amiId" -ForegroundColor Green
+$amiId = ""
+
+# Try SSM Parameter Store first
+$ssmOutput = aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64 --region $Region --query 'Parameter.Value' --output text 2>&1
+if ($LASTEXITCODE -eq 0 -and $ssmOutput -and $ssmOutput -notmatch "AccessDenied|error|Error") {
+    $amiId = $ssmOutput.Trim()
+    Write-Host "[OK] Found AMI ID via SSM: $amiId" -ForegroundColor Green
+} else {
+    Write-Host "[!] SSM access denied or unavailable. Trying alternative method..." -ForegroundColor Yellow
+    
+    # Try EC2 describe-images as alternative (uses ec2:DescribeImages permission)
+    $ec2Output = aws ec2 describe-images --region $Region --owners amazon --filters "Name=name,Values=al2023-ami-*-kernel-6.1-x86_64" "Name=state,Values=available" --query 'sort_by(Images, &CreationDate)[-1].ImageId' --output text 2>&1
+    if ($LASTEXITCODE -eq 0 -and $ec2Output -and $ec2Output -notmatch "AccessDenied|error|Error") {
+        $amiId = $ec2Output.Trim()
+        Write-Host "[OK] Found AMI ID via EC2: $amiId" -ForegroundColor Green
     } else {
-        Write-Host "[!] Could not fetch AMI ID from SSM. Using default or you'll need to provide it manually." -ForegroundColor Yellow
-        Write-Host "    You can find AMI IDs in the EC2 console or provide one when prompted." -ForegroundColor Yellow
-        $amiId = ""
+        Write-Host "[!] Could not automatically fetch AMI ID (insufficient permissions)." -ForegroundColor Yellow
+        Write-Host "    You'll need to provide the AMI ID manually." -ForegroundColor Yellow
     }
-} catch {
-    Write-Host "[!] Could not fetch AMI ID. You may need to provide it manually." -ForegroundColor Yellow
-    $amiId = ""
 }
 
 # If AMI ID not found, prompt for it
 if ([string]::IsNullOrWhiteSpace($amiId)) {
-    $amiId = Read-Host "Enter Amazon Linux 2023 AMI ID (or press Enter to use default)"
+    Write-Host ""
+    Write-Host "To find the latest Amazon Linux 2023 AMI ID:" -ForegroundColor Cyan
+    Write-Host "  1. Go to EC2 Console > Launch Instance > Amazon Linux 2023" -ForegroundColor White
+    Write-Host "  2. Or use AWS Console with a user that has SSM permissions" -ForegroundColor White
+    Write-Host "  3. Or ask your AWS administrator for the AMI ID" -ForegroundColor White
+    Write-Host ""
+    $amiId = Read-Host "Enter Amazon Linux 2023 AMI ID (required)"
     if ([string]::IsNullOrWhiteSpace($amiId)) {
-        # Default AMI ID for us-east-1 (may need to be updated)
-        $amiId = "ami-0c55b159cbfafe1f0"
-        Write-Host "[*] Using default AMI ID: $amiId" -ForegroundColor Yellow
-        Write-Host "    Note: This may not be the latest. Update if needed." -ForegroundColor Yellow
+        Write-Host "[X] AMI ID is required. Deployment cancelled." -ForegroundColor Red
+        exit 1
     }
 }
 

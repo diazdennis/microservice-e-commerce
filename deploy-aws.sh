@@ -40,23 +40,39 @@ GITHUB_REPO_URL="$2"
 
 # Fetch latest AMI ID
 echo -e "${CYAN}[*] Fetching latest Amazon Linux 2023 AMI ID...${NC}"
-AMI_ID=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64 --region "$REGION" --query 'Parameter.Value' --output text 2>&1)
-if [ $? -eq 0 ] && [ -n "$AMI_ID" ] && [[ ! "$AMI_ID" =~ "error" ]]; then
-    echo -e "${GREEN}[OK] Found AMI ID: $AMI_ID${NC}"
+AMI_ID=""
+
+# Try SSM Parameter Store first
+SSM_OUTPUT=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64 --region "$REGION" --query 'Parameter.Value' --output text 2>&1)
+if [ $? -eq 0 ] && [ -n "$SSM_OUTPUT" ] && [[ ! "$SSM_OUTPUT" =~ "AccessDenied" ]] && [[ ! "$SSM_OUTPUT" =~ "error" ]] && [[ ! "$SSM_OUTPUT" =~ "Error" ]]; then
+    AMI_ID=$(echo "$SSM_OUTPUT" | tr -d '[:space:]')
+    echo -e "${GREEN}[OK] Found AMI ID via SSM: $AMI_ID${NC}"
 else
-    echo -e "${YELLOW}[!] Could not fetch AMI ID from SSM. Using default or you'll need to provide it manually.${NC}"
-    echo -e "${YELLOW}    You can find AMI IDs in the EC2 console or provide one when prompted.${NC}"
-    AMI_ID=""
+    echo -e "${YELLOW}[!] SSM access denied or unavailable. Trying alternative method...${NC}"
+    
+    # Try EC2 describe-images as alternative (uses ec2:DescribeImages permission)
+    EC2_OUTPUT=$(aws ec2 describe-images --region "$REGION" --owners amazon --filters "Name=name,Values=al2023-ami-*-kernel-6.1-x86_64" "Name=state,Values=available" --query 'sort_by(Images, &CreationDate)[-1].ImageId' --output text 2>&1)
+    if [ $? -eq 0 ] && [ -n "$EC2_OUTPUT" ] && [[ ! "$EC2_OUTPUT" =~ "AccessDenied" ]] && [[ ! "$EC2_OUTPUT" =~ "error" ]] && [[ ! "$EC2_OUTPUT" =~ "Error" ]]; then
+        AMI_ID=$(echo "$EC2_OUTPUT" | tr -d '[:space:]')
+        echo -e "${GREEN}[OK] Found AMI ID via EC2: $AMI_ID${NC}"
+    else
+        echo -e "${YELLOW}[!] Could not automatically fetch AMI ID (insufficient permissions).${NC}"
+        echo -e "${YELLOW}    You'll need to provide the AMI ID manually.${NC}"
+    fi
 fi
 
 # If AMI ID not found, prompt for it
 if [ -z "$AMI_ID" ]; then
-    read -p "Enter Amazon Linux 2023 AMI ID (or press Enter to use default): " AMI_ID
+    echo ""
+    echo -e "${CYAN}To find the latest Amazon Linux 2023 AMI ID:${NC}"
+    echo -e "  ${NC}1. Go to EC2 Console > Launch Instance > Amazon Linux 2023"
+    echo -e "  ${NC}2. Or use AWS Console with a user that has SSM permissions"
+    echo -e "  ${NC}3. Or ask your AWS administrator for the AMI ID"
+    echo ""
+    read -p "Enter Amazon Linux 2023 AMI ID (required): " AMI_ID
     if [ -z "$AMI_ID" ]; then
-        # Default AMI ID for us-east-1 (may need to be updated)
-        AMI_ID="ami-0c55b159cbfafe1f0"
-        echo -e "${YELLOW}[*] Using default AMI ID: $AMI_ID${NC}"
-        echo -e "${YELLOW}    Note: This may not be the latest. Update if needed.${NC}"
+        echo -e "${RED}[X] AMI ID is required. Deployment cancelled.${NC}"
+        exit 1
     fi
 fi
 
