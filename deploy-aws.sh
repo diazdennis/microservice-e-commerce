@@ -38,6 +38,28 @@ GITHUB_REPO_URL="$2"
 [ -n "$3" ] && STACK_NAME="$3"
 [ -n "$4" ] && REGION="$4"
 
+# Fetch latest AMI ID
+echo -e "${CYAN}[*] Fetching latest Amazon Linux 2023 AMI ID...${NC}"
+AMI_ID=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64 --region "$REGION" --query 'Parameter.Value' --output text 2>&1)
+if [ $? -eq 0 ] && [ -n "$AMI_ID" ] && [[ ! "$AMI_ID" =~ "error" ]]; then
+    echo -e "${GREEN}[OK] Found AMI ID: $AMI_ID${NC}"
+else
+    echo -e "${YELLOW}[!] Could not fetch AMI ID from SSM. Using default or you'll need to provide it manually.${NC}"
+    echo -e "${YELLOW}    You can find AMI IDs in the EC2 console or provide one when prompted.${NC}"
+    AMI_ID=""
+fi
+
+# If AMI ID not found, prompt for it
+if [ -z "$AMI_ID" ]; then
+    read -p "Enter Amazon Linux 2023 AMI ID (or press Enter to use default): " AMI_ID
+    if [ -z "$AMI_ID" ]; then
+        # Default AMI ID for us-east-1 (may need to be updated)
+        AMI_ID="ami-0c55b159cbfafe1f0"
+        echo -e "${YELLOW}[*] Using default AMI ID: $AMI_ID${NC}"
+        echo -e "${YELLOW}    Note: This may not be the latest. Update if needed.${NC}"
+    fi
+fi
+
 # Generate App Key
 echo -e "${CYAN}[*] Generating application key...${NC}"
 if ! command -v openssl &> /dev/null; then
@@ -81,6 +103,7 @@ aws cloudformation create-stack \
     --template-body file://infrastructure/cloudformation.yml \
     --parameters \
         ParameterKey=KeyName,ParameterValue="$KEY_NAME" \
+        ParameterKey=LatestAmiId,ParameterValue="$AMI_ID" \
         ParameterKey=GitHubRepoUrl,ParameterValue="$GITHUB_REPO_URL" \
         ParameterKey=AppKey,ParameterValue="$APP_KEY" \
         ParameterKey=MySQLRootPassword,ParameterValue="$MYSQL_ROOT_PASSWORD" \

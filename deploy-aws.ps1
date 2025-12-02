@@ -27,6 +27,33 @@ try {
     exit 1
 }
 
+# Fetch latest AMI ID
+Write-Host "[*] Fetching latest Amazon Linux 2023 AMI ID..." -ForegroundColor Cyan
+try {
+    $amiId = aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64 --region $Region --query 'Parameter.Value' --output text 2>&1
+    if ($LASTEXITCODE -eq 0 -and $amiId -and $amiId -notmatch "error") {
+        Write-Host "[OK] Found AMI ID: $amiId" -ForegroundColor Green
+    } else {
+        Write-Host "[!] Could not fetch AMI ID from SSM. Using default or you'll need to provide it manually." -ForegroundColor Yellow
+        Write-Host "    You can find AMI IDs in the EC2 console or provide one when prompted." -ForegroundColor Yellow
+        $amiId = ""
+    }
+} catch {
+    Write-Host "[!] Could not fetch AMI ID. You may need to provide it manually." -ForegroundColor Yellow
+    $amiId = ""
+}
+
+# If AMI ID not found, prompt for it
+if ([string]::IsNullOrWhiteSpace($amiId)) {
+    $amiId = Read-Host "Enter Amazon Linux 2023 AMI ID (or press Enter to use default)"
+    if ([string]::IsNullOrWhiteSpace($amiId)) {
+        # Default AMI ID for us-east-1 (may need to be updated)
+        $amiId = "ami-0c55b159cbfafe1f0"
+        Write-Host "[*] Using default AMI ID: $amiId" -ForegroundColor Yellow
+        Write-Host "    Note: This may not be the latest. Update if needed." -ForegroundColor Yellow
+    }
+}
+
 # Generate App Key
 Write-Host "[*] Generating application key..." -ForegroundColor Cyan
 $appKey = openssl rand -base64 32
@@ -71,6 +98,7 @@ $deployCommand = @(
     "--template-body", "file://infrastructure/cloudformation.yml",
     "--parameters",
     "ParameterKey=KeyName,ParameterValue=$KeyName",
+    "ParameterKey=LatestAmiId,ParameterValue=$amiId",
     "ParameterKey=GitHubRepoUrl,ParameterValue=$GitHubRepoUrl",
     "ParameterKey=AppKey,ParameterValue=$appKey",
     "ParameterKey=MySQLRootPassword,ParameterValue=$mysqlRootPasswordPlain",
