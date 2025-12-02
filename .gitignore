@@ -1,22 +1,26 @@
-# Laravel
-/vendor/
+# Composer - PHP dependencies (matches all services)
+vendor/
+composer.phar
+/.composer/
+
+# Node.js dependencies
 /node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Laravel specific
-/storage/app/*
-/storage/framework/cache/*
-/storage/framework/sessions/*
-/storage/framework/views/*
-/storage/logs/*
-!/storage/app/.gitkeep
-!/storage/framework/.gitkeep
-!/storage/framework/cache/.gitkeep
-!/storage/framework/sessions/.gitkeep
-!/storage/framework/views/.gitkeep
-!/storage/logs/.gitkeep
+# Laravel specific - Storage files (matches all services)
+**/storage/app/*
+**/storage/framework/cache/*
+**/storage/framework/sessions/*
+**/storage/framework/views/*
+**/storage/logs/*
+!**/storage/app/.gitkeep
+!**/storage/framework/.gitkeep
+!**/storage/framework/cache/.gitkeep
+!**/storage/framework/sessions/.gitkeep
+!**/storage/framework/views/.gitkeep
+!**/storage/logs/.gitkeep
 
 # Environment files
 .env
