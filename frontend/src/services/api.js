@@ -1,8 +1,9 @@
 import axios from 'axios'
 
-// API base URLs - fallback to local development
-const CATALOG_API = import.meta.env.VITE_CATALOG_API || 'http://localhost:8001/api'
-const CHECKOUT_API = import.meta.env.VITE_CHECKOUT_API || 'http://localhost:8002/api'
+// API base URLs - use relative paths for production (nginx will proxy)
+// For local development, set VITE_CATALOG_API and VITE_CHECKOUT_API in .env
+const CATALOG_API = import.meta.env.VITE_CATALOG_API || '/api'
+const CHECKOUT_API = import.meta.env.VITE_CHECKOUT_API || '/api'
 
 // Create axios instances
 const catalogApi = axios.create({

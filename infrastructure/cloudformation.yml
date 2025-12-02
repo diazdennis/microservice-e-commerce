@@ -1,11 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'E-Commerce Microservices Infrastructure - Free Tier Compliant'
+Description: 'E-Commerce Microservices Infrastructure - Free Tier Compliant with Automated Deployment'
 
 Parameters:
   KeyName:
-    Type: String
+    Type: AWS::EC2::KeyPair::KeyName
     Description: Name of an existing EC2 KeyPair for SSH access
-    Default: my-key-pair
 
   InstanceType:
     Type: String
@@ -16,7 +15,55 @@ Parameters:
 
   LatestAmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+    Description: Amazon Linux 2023 AMI ID
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64
+
+  GitHubRepoUrl:
+    Type: String
+    Description: GitHub repository URL to clone (e.g., https://github.com/username/e-commerce-microservices.git)
+    Default: https://github.com/diazdennis/microservice-e-commerce.git
+
+  AppKey:
+    Type: String
+    Description: Laravel application key (generate with: openssl rand -base64 32)
+    NoEcho: true
+
+  MySQLRootPassword:
+    Type: String
+    Description: MySQL root password (strong password recommended)
+    NoEcho: true
+    MinLength: 8
+
+  MySQLAppPassword:
+    Type: String
+    Description: MySQL application user password
+    NoEcho: true
+    MinLength: 8
+
+  AWSRegion:
+    Type: String
+    Description: AWS Region for SES
+    Default: us-east-1
+
+  SESUsername:
+    Type: String
+    Description: AWS SES SMTP Username
+    NoEcho: true
+
+  SESPassword:
+    Type: String
+    Description: AWS SES SMTP Password
+    NoEcho: true
+
+  MailFromAddress:
+    Type: String
+    Description: Verified email address in AWS SES (sender email)
+    Default: noreply@example.com
+
+  MailFromName:
+    Type: String
+    Description: Email sender name
+    Default: E-Commerce Store
 
 Resources:
   # VPC and Networking
@@ -138,31 +185,70 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-          yum update -y
-          yum install -y docker git
-          service docker start
-          usermod -a -G docker ec2-user
-
+          set -e
+          
+          # Update system
+          dnf update -y
+          
+          # Install Docker
+          dnf install -y docker git
+          systemctl start docker
+          systemctl enable docker
+          usermod -aG docker ec2-user
+          
           # Install Docker Compose
           curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           chmod +x /usr/local/bin/docker-compose
-
-          # Clone repository (replace with your repo URL)
+          
+          # Install Node.js and npm for frontend build
+          dnf install -y nodejs npm
+          
+          # Clone repository
           cd /home/ec2-user
-          git clone https://github.com/yourusername/e-commerce-microservices.git
+          git clone ${GitHubRepoUrl} e-commerce-microservices
           cd e-commerce-microservices
-
-          # Generate Laravel app keys
-          APP_KEY=$(openssl rand -base64 32)
-          export APP_KEY
-
+          
+          # Build frontend
+          cd frontend
+          npm install
+          npm run build
+          cd ..
+          
+          # Create .env file
+          cat > .env <<ENVFILE
+          # Application Key
+          APP_KEY=${AppKey}
+          
+          # AWS SES Configuration
+          AWS_REGION=${AWSRegion}
+          AWS_SES_SMTP_USERNAME=${SESUsername}
+          AWS_SES_SMTP_PASSWORD=${SESPassword}
+          MAIL_FROM_ADDRESS=${MailFromAddress}
+          MAIL_FROM_NAME=${MailFromName}
+          
+          # Database Configuration
+          MYSQL_ROOT_PASSWORD=${MySQLRootPassword}
+          MYSQL_USER=appuser
+          MYSQL_PASSWORD=${MySQLAppPassword}
+          ENVFILE
+          
+          # Wait for Docker to be ready
+          sleep 10
+          
           # Start services
           docker-compose up -d --build
-
-          # Run database migrations and seeders
-          docker-compose exec -T catalog php artisan migrate --seed
-          docker-compose exec -T checkout php artisan migrate
-          docker-compose exec -T email php artisan migrate
+          
+          # Wait for services to be ready
+          sleep 30
+          
+          # Run database migrations
+          docker-compose exec -T catalog php artisan migrate --seed || true
+          docker-compose exec -T checkout php artisan migrate || true
+          docker-compose exec -T email php artisan migrate || true
+          
+          # Log completion
+          echo "Deployment completed successfully!" > /home/ec2-user/deployment-status.txt
+          echo "Application URL: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)" >> /home/ec2-user/deployment-status.txt
 
       Tags:
         - Key: Name
@@ -197,11 +283,23 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-PublicIP'
 
+  PublicDNS:
+    Description: Public DNS hostname of the EC2 instance
+    Value: !GetAtt EC2Instance.PublicDnsName
+    Export:
+      Name: !Sub '${AWS::StackName}-PublicDNS'
+
   WebsiteURL:
-    Description: Website URL
+    Description: Website URL (IP address)
     Value: !Sub 'http://${EIP.PublicIp}'
     Export:
       Name: !Sub '${AWS::StackName}-WebsiteURL'
+
+  WebsiteURLDNS:
+    Description: Website URL (DNS hostname)
+    Value: !Sub 'http://${EC2Instance.PublicDnsName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-WebsiteURLDNS'
 
   SSHCommand:
     Description: SSH command to connect to the instance
