@@ -8,9 +8,10 @@ Parameters:
 
   InstanceType:
     Type: String
-    Description: "EC2 instance type (t2.micro for free tier)"
-    Default: t2.micro
+    Description: "EC2 instance type (t3.micro for free tier in ap-southeast-2)"
+    Default: t3.micro
     AllowedValues:
+      - t3.micro
       - t2.micro
 
   LatestAmiId:
@@ -42,7 +43,7 @@ Parameters:
   AWSRegion:
     Type: String
     Description: "AWS Region for SES"
-    Default: us-east-1
+    Default: ap-southeast-1
 
   SESUsername:
     Type: String
@@ -57,7 +58,7 @@ Parameters:
   MailFromAddress:
     Type: String
     Description: "Verified email address in AWS SES (sender email)"
-    Default: noreply@example.com
+    Default: noreply@e-commerce.com
 
   MailFromName:
     Type: String
