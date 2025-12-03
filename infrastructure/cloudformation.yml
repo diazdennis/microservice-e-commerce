@@ -223,7 +223,7 @@ Resources:
           
           # Install buildx plugin
           mkdir -p ~/.docker/cli-plugins /usr/local/lib/docker/cli-plugins
-          curl -L "https://github.com/docker/buildx/releases/latest/download/buildx-v0.17.0.linux-${BUILDX_ARCH}" -o ~/.docker/cli-plugins/docker-buildx
+          curl -L "https://github.com/docker/buildx/releases/latest/download/buildx-v0.17.0.linux-$${BUILDX_ARCH}" -o ~/.docker/cli-plugins/docker-buildx
           cp ~/.docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
           chmod +x ~/.docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
           
