@@ -186,28 +186,28 @@ Resources:
         Fn::Base64: !Sub |
           #!/bin/bash
           set -e
-          
+
           # Update system
           dnf update -y
-          
+
           # Install Docker
           dnf install -y docker git
           systemctl start docker
           systemctl enable docker
           usermod -aG docker ec2-user
-          
+
           # Install Docker Compose
           curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           chmod +x /usr/local/bin/docker-compose
-          
+
           # Install Node.js and npm for frontend build
           dnf install -y nodejs npm
-          
+
           # Clone repository
           cd /home/ec2-user
           git clone ${GitHubRepoUrl} microservice-e-commerce
           cd microservice-e-commerce
-          
+
           # Build frontend (if frontend directory exists)
           if [ -d "frontend" ]; then
             echo "Building frontend..."
@@ -229,107 +229,107 @@ Resources:
             echo "ERROR: Frontend directory not found!"
             exit 1
           fi
-          
+
           # Verify frontend dist exists
           if [ ! -d "frontend/dist" ] || [ -z "$(ls -A frontend/dist)" ]; then
             echo "ERROR: Frontend dist directory is empty or missing!"
             exit 1
           fi
-          
+
           # Create shared .env file for docker-compose variables
           echo "Creating shared .env file..."
-          cat > .env <<ENVFILE
+          cat > .env << 'EOF'
           # Shared Docker Compose variables
           MYSQL_ROOT_PASSWORD=${MySQLRootPassword}
           MYSQL_USER=appuser
           MYSQL_PASSWORD=${MySQLAppPassword}
           APP_KEY=base64:${AppKey}
           CORS_ALLOWED_ORIGINS=*
-          ENVFILE
+          EOF
 
           # Create service-specific .env files
           echo "Creating service-specific .env files..."
 
           # Catalog service .env
           mkdir -p services/catalog
-          cat > services/catalog/.env <<CATALOG_ENV
-APP_NAME="Catalog Service"
-APP_ENV=production
-APP_KEY=base64:${AppKey}
-APP_DEBUG=false
-APP_URL=http://localhost
+          cat > services/catalog/.env << 'EOF'
+          APP_NAME="Catalog Service"
+          APP_ENV=production
+          APP_KEY=base64:${AppKey}
+          APP_DEBUG=false
+          APP_URL=http://localhost
 
-DB_CONNECTION=mysql
-DB_HOST=mysql
-DB_PORT=3306
-DB_DATABASE=catalog_db
-DB_USERNAME=appuser
-DB_PASSWORD=apppassword
+          DB_CONNECTION=mysql
+          DB_HOST=mysql
+          DB_PORT=3306
+          DB_DATABASE=catalog_db
+          DB_USERNAME=appuser
+          DB_PASSWORD=apppassword
 
-CORS_ALLOWED_ORIGINS=*
-CATALOG_ENV
+          CORS_ALLOWED_ORIGINS=*
+          EOF
 
           # Checkout service .env
           mkdir -p services/checkout
-          cat > services/checkout/.env <<CHECKOUT_ENV
-APP_NAME="Checkout Service"
-APP_ENV=production
-APP_KEY=base64:${AppKey}
-APP_DEBUG=false
-APP_URL=http://localhost
+          cat > services/checkout/.env << 'EOF'
+          APP_NAME="Checkout Service"
+          APP_ENV=production
+          APP_KEY=base64:${AppKey}
+          APP_DEBUG=false
+          APP_URL=http://localhost
 
-DB_CONNECTION=mysql
-DB_HOST=mysql
-DB_PORT=3306
-DB_DATABASE=checkout_db
-DB_USERNAME=appuser
-DB_PASSWORD=apppassword
+          DB_CONNECTION=mysql
+          DB_HOST=mysql
+          DB_PORT=3306
+          DB_DATABASE=checkout_db
+          DB_USERNAME=appuser
+          DB_PASSWORD=apppassword
 
-# Service URLs (Docker network hostnames - internal communication)
-CATALOG_SERVICE_URL=http://catalog
-EMAIL_SERVICE_URL=http://email
+          # Service URLs (Docker network hostnames - internal communication)
+          CATALOG_SERVICE_URL=http://catalog
+          EMAIL_SERVICE_URL=http://email
 
-CORS_ALLOWED_ORIGINS=*
-CHECKOUT_ENV
+          CORS_ALLOWED_ORIGINS=*
+          EOF
 
           # Email service .env
           mkdir -p services/email
-          cat > services/email/.env <<EMAIL_ENV
-APP_NAME="Email Service"
-APP_ENV=production
-APP_KEY=base64:${AppKey}
-APP_DEBUG=false
-APP_URL=http://localhost
+          cat > services/email/.env << 'EOF'
+          APP_NAME="Email Service"
+          APP_ENV=production
+          APP_KEY=base64:${AppKey}
+          APP_DEBUG=false
+          APP_URL=http://localhost
 
-DB_CONNECTION=mysql
-DB_HOST=mysql
-DB_PORT=3306
-DB_DATABASE=email_db
-DB_USERNAME=appuser
-DB_PASSWORD=apppassword
+          DB_CONNECTION=mysql
+          DB_HOST=mysql
+          DB_PORT=3306
+          DB_DATABASE=email_db
+          DB_USERNAME=appuser
+          DB_PASSWORD=apppassword
 
-# AWS SES Configuration
-MAIL_MAILER=smtp
-MAIL_HOST=email-smtp.${AWSRegion}.amazonaws.com
-MAIL_PORT=587
-MAIL_USERNAME=${SESUsername}
-MAIL_PASSWORD=${SESPassword}
-MAIL_ENCRYPTION=tls
-MAIL_FROM_ADDRESS=${MailFromAddress}
-MAIL_FROM_NAME="${MailFromName}"
-AWS_REGION=${AWSRegion}
+          # AWS SES Configuration
+          MAIL_MAILER=smtp
+          MAIL_HOST=email-smtp.${AWSRegion}.amazonaws.com
+          MAIL_PORT=587
+          MAIL_USERNAME=${SESUsername}
+          MAIL_PASSWORD=${SESPassword}
+          MAIL_ENCRYPTION=tls
+          MAIL_FROM_ADDRESS=${MailFromAddress}
+          MAIL_FROM_NAME="${MailFromName}"
+          AWS_REGION=${AWSRegion}
 
-CORS_ALLOWED_ORIGINS=*
-EMAIL_ENV
+          CORS_ALLOWED_ORIGINS=*
+          EOF
 
           # Create frontend production environment
           mkdir -p frontend
-          cat > frontend/.env.production <<FRONTEND_ENV
-# Frontend API endpoints (relative paths work with Nginx proxy)
-VITE_CATALOG_API=/api
-VITE_CHECKOUT_API=/api
-# Note: No email service URL - frontend never calls email service directly
-FRONTEND_ENV
+          cat > frontend/.env.production << 'EOF'
+          # Frontend API endpoints (relative paths work with Nginx proxy)
+          VITE_CATALOG_API=/api
+          VITE_CHECKOUT_API=/api
+          # Note: No email service URL - frontend never calls email service directly
+          EOF
 
           # Verify files were created
           if [ ! -f ".env" ] || [ ! -f "services/catalog/.env" ] || [ ! -f "services/checkout/.env" ] || [ ! -f "services/email/.env" ] || [ ! -f "frontend/.env.production" ]; then
@@ -338,40 +338,40 @@ FRONTEND_ENV
           fi
 
           echo "All .env files created successfully"
-          
+
           # Wait for Docker to be ready
           echo "Waiting for Docker to be ready..."
           sleep 10
-          
+
           # Verify Docker is running
           if ! systemctl is-active --quiet docker; then
             echo "ERROR: Docker is not running!"
             systemctl status docker
             exit 1
           fi
-          
+
           # Start services
           echo "Starting Docker Compose services..."
           docker-compose up -d --build
-          
+
           if [ $? -ne 0 ]; then
             echo "ERROR: Docker Compose failed!"
             echo "Checking logs..."
             docker-compose logs
             exit 1
           fi
-          
+
           # Wait for services to be ready
           echo "Waiting for services to be ready..."
           sleep 30
-          
+
           # Verify all containers are running
           echo "Verifying container status..."
           if ! docker-compose ps | grep -q "Up"; then
             echo "WARNING: Some containers may not be running"
             docker-compose ps
           fi
-          
+
           # Check if frontend container is running and port 80 is listening
           echo "Checking frontend service..."
           sleep 5
@@ -380,7 +380,7 @@ FRONTEND_ENV
             docker-compose logs frontend
             exit 1
           fi
-          
+
           # Test if port 80 is accessible
           if ! curl -f http://localhost > /dev/null 2>&1; then
             echo "WARNING: Port 80 is not responding, checking logs..."
@@ -388,16 +388,16 @@ FRONTEND_ENV
           else
             echo "Frontend service is responding on port 80"
           fi
-          
+
           # Run database migrations
           echo "Running database migrations..."
           docker-compose exec -T catalog php artisan migrate --seed || echo "WARNING: Catalog migration failed"
           docker-compose exec -T checkout php artisan migrate || echo "WARNING: Checkout migration failed"
           docker-compose exec -T email php artisan migrate || echo "WARNING: Email migration failed"
-          
+
           # Get public IP
           PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-          
+
           # Log completion with detailed status
           echo "Deployment completed successfully!" > /home/ec2-user/deployment-status.txt
           echo "Application URL: http://$PUBLIC_IP" >> /home/ec2-user/deployment-status.txt
@@ -405,7 +405,7 @@ FRONTEND_ENV
           echo "" >> /home/ec2-user/deployment-status.txt
           echo "Container status:" >> /home/ec2-user/deployment-status.txt
           docker-compose ps >> /home/ec2-user/deployment-status.txt
-          
+
           echo ""
           echo "=========================================="
           echo "DEPLOYMENT COMPLETED SUCCESSFULLY!"
