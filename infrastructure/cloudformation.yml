@@ -204,14 +204,18 @@ Resources:
           
           # Clone repository
           cd /home/ec2-user
-          git clone ${GitHubRepoUrl} e-commerce-microservices
-          cd e-commerce-microservices
+          git clone ${GitHubRepoUrl} microservice-e-commerce
+          cd microservice-e-commerce
           
-          # Build frontend
-          cd frontend
-          npm install
-          npm run build
-          cd ..
+          # Build frontend (if frontend directory exists)
+          if [ -d "frontend" ]; then
+            cd frontend
+            npm install || echo "npm install failed, continuing..."
+            npm run build || echo "npm build failed, continuing..."
+            cd ..
+          else
+            echo "Frontend directory not found, skipping build"
+          fi
           
           # Create .env file
           cat > .env <<ENVFILE
@@ -235,15 +239,22 @@ Resources:
           sleep 10
           
           # Start services
-          docker-compose up -d --build
+          echo "Starting Docker Compose services..."
+          docker-compose up -d --build || {
+            echo "Docker Compose failed, checking logs..."
+            docker-compose logs
+            exit 1
+          }
           
           # Wait for services to be ready
+          echo "Waiting for services to be ready..."
           sleep 30
           
           # Run database migrations
-          docker-compose exec -T catalog php artisan migrate --seed || true
-          docker-compose exec -T checkout php artisan migrate || true
-          docker-compose exec -T email php artisan migrate || true
+          echo "Running database migrations..."
+          docker-compose exec -T catalog php artisan migrate --seed || echo "Catalog migration failed"
+          docker-compose exec -T checkout php artisan migrate || echo "Checkout migration failed"
+          docker-compose exec -T email php artisan migrate || echo "Email migration failed"
           
           # Log completion
           echo "Deployment completed successfully!" > /home/ec2-user/deployment-status.txt
