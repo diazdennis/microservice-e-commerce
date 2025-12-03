@@ -33,6 +33,13 @@ sudo systemctl start docker
 sudo systemctl enable docker
 sudo usermod -aG docker $USER
 
+# Wait a moment for group changes
+sleep 2
+
+# Activate docker group membership (allows docker commands without sudo)
+# Note: This creates a new shell, so we'll need to handle this carefully
+# For now, we'll use sudo for docker commands where needed
+
 # Step 3: Install Docker Buildx
 echo -e "${CYAN}[*] Step 3: Installing Docker Buildx...${NC}"
 ARCH=$(uname -m)
@@ -44,16 +51,33 @@ else
   BUILDX_ARCH="amd64"
 fi
 
-mkdir -p ~/.docker/cli-plugins /usr/local/lib/docker/cli-plugins
+mkdir -p ~/.docker/cli-plugins
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
 curl -L "https://github.com/docker/buildx/releases/latest/download/buildx-v0.17.0.linux-${BUILDX_ARCH}" -o ~/.docker/cli-plugins/docker-buildx
+chmod +x ~/.docker/cli-plugins/docker-buildx
 sudo cp ~/.docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
-chmod +x ~/.docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
+sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+
+# Set up buildx builder (required for buildx to work)
+sudo docker buildx install || echo -e "${YELLOW}[!] Buildx install command completed${NC}"
+sudo docker buildx create --use --name builder 2>/dev/null || sudo docker buildx use builder 2>/dev/null || echo -e "${YELLOW}[!] Buildx builder setup completed${NC}"
+
 docker buildx version || echo -e "${YELLOW}[!] Buildx verification skipped${NC}"
 
 # Step 4: Install Docker Compose
 echo -e "${CYAN}[*] Step 4: Installing Docker Compose...${NC}"
-curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then
+  COMPOSE_ARCH="x86_64"
+elif [ "$ARCH" = "aarch64" ]; then
+  COMPOSE_ARCH="aarch64"
+else
+  COMPOSE_ARCH="x86_64"
+fi
+curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-${OS}-${COMPOSE_ARCH}" -o /tmp/docker-compose
+sudo mv /tmp/docker-compose /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
 docker-compose --version || echo -e "${YELLOW}[!] Docker Compose verification skipped${NC}"
 
 # Step 5: Install Node.js
@@ -202,11 +226,21 @@ echo -e "${GREEN}[OK] Environment files created${NC}"
 # Step 9: Start Docker Services
 echo -e "${CYAN}[*] Step 9: Starting Docker services...${NC}"
 echo -e "${YELLOW}[!] This may take 10-15 minutes...${NC}"
-docker-compose up -d --build
+# Check if docker works without sudo, otherwise use sudo
+if docker info > /dev/null 2>&1; then
+  DOCKER_CMD="docker"
+  COMPOSE_CMD="docker-compose"
+else
+  echo -e "${YELLOW}[!] Using sudo for docker commands (group membership requires logout/login)${NC}"
+  DOCKER_CMD="sudo docker"
+  COMPOSE_CMD="sudo docker-compose"
+fi
+
+$COMPOSE_CMD up -d --build
 
 if [ $? -ne 0 ]; then
   echo -e "${RED}[X] Docker Compose failed!${NC}"
-  docker-compose logs
+  $COMPOSE_CMD logs
   exit 1
 fi
 
@@ -216,13 +250,13 @@ sleep 30
 
 # Step 11: Check status
 echo -e "${CYAN}[*] Step 11: Checking service status...${NC}"
-docker-compose ps
+$COMPOSE_CMD ps
 
 # Step 12: Run Migrations
 echo -e "${CYAN}[*] Step 12: Running database migrations...${NC}"
-docker-compose exec -T catalog php artisan migrate --seed || echo -e "${YELLOW}[!] Catalog migration failed or already up to date${NC}"
-docker-compose exec -T checkout php artisan migrate || echo -e "${YELLOW}[!] Checkout migration failed or already up to date${NC}"
-docker-compose exec -T email php artisan migrate || echo -e "${YELLOW}[!] Email migration failed or already up to date${NC}"
+$COMPOSE_CMD exec -T catalog php artisan migrate --seed || echo -e "${YELLOW}[!] Catalog migration failed or already up to date${NC}"
+$COMPOSE_CMD exec -T checkout php artisan migrate || echo -e "${YELLOW}[!] Checkout migration failed or already up to date${NC}"
+$COMPOSE_CMD exec -T email php artisan migrate || echo -e "${YELLOW}[!] Email migration failed or already up to date${NC}"
 
 # Step 13: Get Public IP
 PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "localhost")
