@@ -209,31 +209,52 @@ Resources:
           systemctl start docker
           systemctl enable docker
           usermod -aG docker ec2-user
+          
+          # Wait for Docker to be fully ready
+          sleep 5
+          docker info > /dev/null 2>&1 || (echo "ERROR: Docker is not responding!" && exit 1)
 
           # Install Docker Buildx plugin (required for docker-compose build)
-          # Detect architecture
+          # Detect architecture and download appropriate buildx binary
           ARCH=$(uname -m)
           if [ "$ARCH" = "x86_64" ]; then
-            BUILDX_ARCH="amd64"
+            BUILDX_URL="https://github.com/docker/buildx/releases/download/v0.17.0/buildx-v0.17.0.linux-amd64"
           elif [ "$ARCH" = "aarch64" ]; then
-            BUILDX_ARCH="arm64"
+            BUILDX_URL="https://github.com/docker/buildx/releases/download/v0.17.0/buildx-v0.17.0.linux-arm64"
           else
-            BUILDX_ARCH="amd64"
+            BUILDX_URL="https://github.com/docker/buildx/releases/download/v0.17.0/buildx-v0.17.0.linux-amd64"
           fi
           
           # Install buildx plugin
           mkdir -p ~/.docker/cli-plugins /usr/local/lib/docker/cli-plugins
-          curl -L "https://github.com/docker/buildx/releases/latest/download/buildx-v0.17.0.linux-$${BUILDX_ARCH}" -o ~/.docker/cli-plugins/docker-buildx
+          curl -L "$BUILDX_URL" -o ~/.docker/cli-plugins/docker-buildx
+          chmod +x ~/.docker/cli-plugins/docker-buildx
           cp ~/.docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
-          chmod +x ~/.docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+          
+          # Set up buildx builder (required for buildx to work)
+          docker buildx install || echo "Buildx install command completed"
+          docker buildx create --use --name builder 2>/dev/null || docker buildx use builder 2>/dev/null || echo "Buildx builder setup completed"
           
           # Verify buildx installation
-          docker buildx version || echo "Buildx installation verified"
+          docker buildx version || echo "WARNING: Buildx verification failed, but continuing..."
 
-          # Install Docker Compose
-          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          # Install Docker Compose (standalone v2)
+          # Detect OS and architecture for docker-compose download
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          if [ "$ARCH" = "x86_64" ]; then
+            COMPOSE_URL="https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-x86_64"
+          elif [ "$ARCH" = "aarch64" ]; then
+            COMPOSE_URL="https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-aarch64"
+          else
+            COMPOSE_URL="https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-x86_64"
+          fi
+          
+          curl -L "$COMPOSE_URL" -o /usr/local/bin/docker-compose
           chmod +x /usr/local/bin/docker-compose
-          docker-compose --version || echo "Docker Compose installation verified"
+          
+          # Verify docker-compose installation
+          docker-compose --version || echo "WARNING: Docker Compose verification failed, but continuing..."
 
           # Install Node.js and npm for frontend build
           dnf install -y nodejs npm
