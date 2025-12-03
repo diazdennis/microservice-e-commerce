@@ -1,86 +1,79 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'E-Commerce Microservices Infrastructure - Free Tier Compliant with Automated Deployment'
+Description: E-Commerce Microservices Infrastructure - Free Tier Compliant with Automated Deployment
 
 Parameters:
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
-    Description: "Name of an existing EC2 KeyPair for SSH access"
+    Description: Name of an existing EC2 KeyPair for SSH access
 
   InstanceType:
     Type: String
-    Description: "EC2 instance type (t3.micro for free tier in ap-southeast-2)"
     Default: t3.micro
     AllowedValues:
       - t3.micro
       - t2.micro
+    Description: EC2 instance type
 
   LatestAmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Description: "Amazon Linux 2023 AMI ID - automatically fetched from SSM Parameter Store"
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64
+    Description: Amazon Linux 2023 AMI via SSM
 
   GitHubRepoUrl:
     Type: String
-    Description: "GitHub repository URL to clone (e.g., https://github.com/username/e-commerce-microservices.git)"
     Default: https://github.com/diazdennis/microservice-e-commerce.git
+    Description: GitHub repository URL to clone
 
   AppKey:
     Type: String
-    Description: "Laravel application key (generate with: openssl rand -base64 32)"
     NoEcho: true
+    MinLength: 32
+    Description: Laravel APP_KEY (base64, 32+ chars)
 
   MySQLRootPassword:
     Type: String
-    Description: "MySQL root password (strong password recommended)"
     NoEcho: true
     MinLength: 8
+    Description: MySQL root password
 
   MySQLAppPassword:
     Type: String
-    Description: "MySQL application user password"
     NoEcho: true
     MinLength: 8
+    Description: MySQL app user password
 
   AWSRegion:
     Type: String
-    Description: "AWS Region for SES"
     Default: ap-southeast-1
+    AllowedValues:
+      - us-east-1
+      - us-west-2
+      - ap-southeast-1
+      - ap-southeast-2
+      - eu-west-1
+    Description: Region for SES SMTP endpoint
 
   SESUsername:
     Type: String
-    Description: "AWS SES SMTP Username"
     NoEcho: true
+    Description: SES SMTP username
 
   SESPassword:
     Type: String
-    Description: "AWS SES SMTP Password"
     NoEcho: true
+    Description: SES SMTP password
 
   MailFromAddress:
     Type: String
-    Description: "Verified email address in AWS SES (sender email)"
     Default: dennis.diaz.tech@gmail.com
+    Description: Verified SES sender email
 
   MailFromName:
     Type: String
-    Description: "Email sender name"
     Default: "E-Commerce Store"
-
-Mappings:
-  RegionMap:
-    us-east-1:
-      AMI: ami-0c55b159cbfafe1f0
-    us-west-2:
-      AMI: ami-0c55b159cbfafe1f0
-    ap-southeast-1:
-      AMI: ami-0c55b159cbfafe1f0
-    ap-southeast-2:
-      AMI: ami-0c55b159cbfafe1f0
-    eu-west-1:
-      AMI: ami-0c55b159cbfafe1f0
+    Description: Email sender name
 
 Resources:
-  # VPC and Networking
   VPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -89,14 +82,10 @@ Resources:
       EnableDnsSupport: true
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}-vpc'
+          Value: !Sub '${AWS::StackName}-VPC'
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
-    Properties:
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-igw'
 
   VPCGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -113,15 +102,12 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}-public-subnet'
+          Value: !Sub '${AWS::StackName}-PublicSubnet'
 
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-public-rt'
 
   PublicRoute:
     Type: AWS::EC2::Route
@@ -136,32 +122,27 @@ Resources:
       SubnetId: !Ref PublicSubnet
       RouteTableId: !Ref PublicRouteTable
 
-  # Security Group
   WebSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Security group for web server
+      GroupDescription: Allow HTTP and SSH
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
-          Description: HTTP access
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
           CidrIp: 0.0.0.0/0
-          Description: SSH access
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}-sg'
+          Value: !Sub '${AWS::StackName}-SG'
 
-  # IAM Role for EC2 to use SES
   EC2Role:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${AWS::StackName}-ec2-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -171,25 +152,18 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSESFullAccess
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-ec2-role'
 
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
-      InstanceProfileName: !Sub '${AWS::StackName}-instance-profile'
       Roles:
         - !Ref EC2Role
 
-  # SES Email Verification
   SESEmailIdentity:
     Type: AWS::SES::EmailIdentity
     Properties:
       EmailIdentity: !Ref MailFromAddress
-    DependsOn: EC2Role
 
-  # EC2 Instance
   EC2Instance:
     Type: AWS::EC2::Instance
     Properties:
@@ -198,8 +172,8 @@ Resources:
       KeyName: !Ref KeyName
       IamInstanceProfile: !Ref EC2InstanceProfile
       NetworkInterfaces:
-        - AssociatePublicIpAddress: true
-          DeviceIndex: 0
+        - DeviceIndex: 0
+          AssociatePublicIpAddress: true
           SubnetId: !Ref PublicSubnet
           GroupSet:
             - !Ref WebSecurityGroup
@@ -207,102 +181,38 @@ Resources:
         Fn::Base64: !Sub |
           #!/bin/bash
           set -e
+          exec > /var/log/user-data.log 2>&1
 
-          # Update system
           dnf update -y
+          dnf install -y docker git curl nodejs npm
 
-          # Install Docker
-          dnf install -y docker git
           systemctl start docker
           systemctl enable docker
           usermod -aG docker ec2-user
-          
-          # Wait for Docker to be fully ready
-          sleep 5
-          docker info > /dev/null 2>&1 || (echo "ERROR: Docker is not responding!" && exit 1)
+          sleep 10
 
-          # Install Docker Buildx plugin (required for docker-compose build)
-          # Detect architecture and download appropriate buildx binary
-          ARCH=$(uname -m)
-          if [ "$ARCH" = "x86_64" ]; then
-            BUILDX_URL="https://github.com/docker/buildx/releases/download/v0.17.0/buildx-v0.17.0.linux-amd64"
-          elif [ "$ARCH" = "aarch64" ]; then
-            BUILDX_URL="https://github.com/docker/buildx/releases/download/v0.17.0/buildx-v0.17.0.linux-arm64"
-          else
-            BUILDX_URL="https://github.com/docker/buildx/releases/download/v0.17.0/buildx-v0.17.0.linux-amd64"
-          fi
-          
-          # Install buildx plugin
-          mkdir -p ~/.docker/cli-plugins /usr/local/lib/docker/cli-plugins
-          curl -L "$BUILDX_URL" -o ~/.docker/cli-plugins/docker-buildx
-          chmod +x ~/.docker/cli-plugins/docker-buildx
-          cp ~/.docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
-          chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
-          
-          # Set up buildx builder (required for buildx to work)
-          docker buildx install || echo "Buildx install command completed"
-          docker buildx create --use --name builder 2>/dev/null || docker buildx use builder 2>/dev/null || echo "Buildx builder setup completed"
-          
-          # Verify buildx installation
-          docker buildx version || echo "WARNING: Buildx verification failed, but continuing..."
-
-          # Install Docker Compose (standalone v2)
-          # Detect OS and architecture for docker-compose download
-          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-          if [ "$ARCH" = "x86_64" ]; then
-            COMPOSE_URL="https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-x86_64"
-          elif [ "$ARCH" = "aarch64" ]; then
-            COMPOSE_URL="https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-aarch64"
-          else
-            COMPOSE_URL="https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-x86_64"
-          fi
-          
-          curl -L "$COMPOSE_URL" -o /usr/local/bin/docker-compose
+          # Docker Compose v2
+          curl -L "https://github.com/docker/compose/releases/download/v2.29.1/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
           chmod +x /usr/local/bin/docker-compose
-          
-          # Verify docker-compose installation
-          docker-compose --version || echo "WARNING: Docker Compose verification failed, but continuing..."
 
-          # Install Node.js and npm for frontend build
-          dnf install -y nodejs npm
-
-          # Clone repository
           cd /home/ec2-user
+          rm -rf microservice-e-commerce
           git clone ${GitHubRepoUrl} microservice-e-commerce
           cd microservice-e-commerce
+          chown -R ec2-user:ec2-user .
 
-          # Build frontend (if frontend directory exists)
-          if [ -d "frontend" ]; then
-            echo "Building frontend..."
+          # Build frontend
+          if [ -d frontend ]; then
             cd frontend
-            npm install
-            if [ $? -eq 0 ]; then
-              npm run build
-              if [ $? -ne 0 ]; then
-                echo "ERROR: Frontend build failed!"
-                exit 1
-              fi
-            else
-              echo "ERROR: npm install failed!"
-              exit 1
-            fi
+            npm install && npm run build
             cd ..
-            echo "Frontend build completed successfully"
           else
-            echo "ERROR: Frontend directory not found!"
+            echo "ERROR: frontend directory missing"
             exit 1
           fi
 
-          # Verify frontend dist exists
-          if [ ! -d "frontend/dist" ] || [ -z "$(ls -A frontend/dist)" ]; then
-            echo "ERROR: Frontend dist directory is empty or missing!"
-            exit 1
-          fi
-
-          # Create shared .env file for docker-compose variables
-          echo "Creating shared .env file..."
-          cat > .env << 'EOF'
-          # Shared Docker Compose variables
+          # Shared .env
+          cat > .env << EOF
           MYSQL_ROOT_PASSWORD=${MySQLRootPassword}
           MYSQL_USER=appuser
           MYSQL_PASSWORD=${MySQLAppPassword}
@@ -310,68 +220,47 @@ Resources:
           CORS_ALLOWED_ORIGINS=*
           EOF
 
-          # Create service-specific .env files
-          echo "Creating service-specific .env files..."
+          # Service .env files
+          mkdir -p services/catalog services/checkout services/email
 
-          # Catalog service .env
-          mkdir -p services/catalog
-          cat > services/catalog/.env << 'EOF'
-          APP_NAME="Catalog Service"
+          cat > services/catalog/.env << EOF
           APP_ENV=production
           APP_KEY=base64:${AppKey}
           APP_DEBUG=false
-          APP_URL=http://localhost
-
           DB_CONNECTION=mysql
           DB_HOST=mysql
           DB_PORT=3306
           DB_DATABASE=catalog_db
           DB_USERNAME=appuser
-          DB_PASSWORD=apppassword
-
+          DB_PASSWORD=${MySQLAppPassword}
           CORS_ALLOWED_ORIGINS=*
           EOF
 
-          # Checkout service .env
-          mkdir -p services/checkout
-          cat > services/checkout/.env << 'EOF'
-          APP_NAME="Checkout Service"
+          cat > services/checkout/.env << EOF
           APP_ENV=production
           APP_KEY=base64:${AppKey}
           APP_DEBUG=false
-          APP_URL=http://localhost
-
           DB_CONNECTION=mysql
           DB_HOST=mysql
           DB_PORT=3306
           DB_DATABASE=checkout_db
           DB_USERNAME=appuser
-          DB_PASSWORD=apppassword
-
-          # Service URLs (Docker network hostnames - internal communication)
-          CATALOG_SERVICE_URL=http://catalog
-          EMAIL_SERVICE_URL=http://email
-
+          DB_PASSWORD=${MySQLAppPassword}
+          CATALOG_SERVICE_URL=http://catalog:8000
+          EMAIL_SERVICE_URL=http://email:8000
           CORS_ALLOWED_ORIGINS=*
           EOF
 
-          # Email service .env
-          mkdir -p services/email
-          cat > services/email/.env << 'EOF'
-          APP_NAME="Email Service"
+          cat > services/email/.env << EOF
           APP_ENV=production
           APP_KEY=base64:${AppKey}
           APP_DEBUG=false
-          APP_URL=http://localhost
-
           DB_CONNECTION=mysql
           DB_HOST=mysql
           DB_PORT=3306
           DB_DATABASE=email_db
           DB_USERNAME=appuser
-          DB_PASSWORD=apppassword
-
-          # AWS SES Configuration
+          DB_PASSWORD=${MySQLAppPassword}
           MAIL_MAILER=smtp
           MAIL_HOST=email-smtp.${AWSRegion}.amazonaws.com
           MAIL_PORT=587
@@ -380,279 +269,46 @@ Resources:
           MAIL_ENCRYPTION=tls
           MAIL_FROM_ADDRESS=${MailFromAddress}
           MAIL_FROM_NAME="${MailFromName}"
-          AWS_REGION=${AWSRegion}
-
           CORS_ALLOWED_ORIGINS=*
           EOF
 
-          # Create frontend production environment
-          mkdir -p frontend
-          cat > frontend/.env.production << 'EOF'
-          # Frontend API endpoints (relative paths work with Nginx proxy)
+          cat > frontend/.env.production << EOF
           VITE_CATALOG_API=/api
-          VITE_CHECKOUT_API=/api
-          # Note: No email service URL - frontend never calls email service directly
+          VITE_CHECKOUT_API=/api/checkout
           EOF
 
-          # Verify files were created
-          if [ ! -f ".env" ] || [ ! -f "services/catalog/.env" ] || [ ! -f "services/checkout/.env" ] || [ ! -f "services/email/.env" ] || [ ! -f "frontend/.env.production" ]; then
-            echo "ERROR: Some .env files were not created!"
-            exit 1
-          fi
-
-          echo "All .env files created successfully"
-
-          # Wait for Docker to be ready
-          echo "Waiting for Docker to be ready..."
-          sleep 10
-
-          # Verify Docker is running
-          if ! systemctl is-active --quiet docker; then
-            echo "ERROR: Docker is not running!"
-            systemctl status docker
-            exit 1
-          fi
-
-          # Start services
-          echo "Starting Docker Compose services..."
+          # Start everything
           docker-compose up -d --build
 
-          if [ $? -ne 0 ]; then
-            echo "ERROR: Docker Compose failed!"
-            echo "Checking logs..."
-            docker-compose logs
-            exit 1
-          fi
-
-          # Wait for services to be ready
-          echo "Waiting for services to be ready..."
-          sleep 30
-
-          # Verify all containers are running
-          echo "Verifying container status..."
-          if ! docker-compose ps | grep -q "Up"; then
-            echo "WARNING: Some containers may not be running"
-            docker-compose ps
-          fi
-
-          # Check if frontend container is running and port 80 is listening
-          echo "Checking frontend service..."
-          sleep 5
-          if ! docker ps | grep -q "ecommerce_frontend"; then
-            echo "ERROR: Frontend container is not running!"
-            docker-compose logs frontend
-            exit 1
-          fi
-
-          # Test if port 80 is accessible
-          if ! curl -f http://localhost > /dev/null 2>&1; then
-            echo "WARNING: Port 80 is not responding, checking logs..."
-            docker-compose logs frontend --tail=20
-          else
-            echo "Frontend service is responding on port 80"
-          fi
-
-          # Ensure we're in the correct directory
-          cd /home/ec2-user/microservice-e-commerce
-          echo "Current directory: $(pwd)"
-          
-          # Verify docker-compose is available
-          if ! command -v docker-compose &> /dev/null; then
-            echo "ERROR: docker-compose command not found!"
-            which docker-compose || echo "docker-compose not in PATH"
-            exit 1
-          fi
-          echo "docker-compose found at: $(which docker-compose)"
-          
-          # Verify docker-compose.yml exists
-          if [ ! -f "docker-compose.yml" ]; then
-            echo "ERROR: docker-compose.yml not found in current directory!"
-            ls -la
-            exit 1
-          fi
-          echo "docker-compose.yml found"
-          
-          # Wait for database to be fully ready before running migrations
-          echo "Waiting for database to be ready..."
-          DB_READY=0
+          # Wait for MySQL
           for i in {1..60}; do
-            if docker-compose exec -T mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
-              echo "Database is ready!"
-              DB_READY=1
-              break
-            fi
-            echo "Waiting for database... ($i/60)"
-            sleep 2
+            docker-compose exec -T mysql mysqladmin ping -hlocalhost --silent && break
+            sleep 3
           done
-          
-          if [ $DB_READY -eq 0 ]; then
-            echo "ERROR: Database did not become ready after  within 120 seconds!"
-            docker-compose logs mysql
-            exit 1
-          fi
 
-          # Wait for Laravel service containers to be running
-          echo "Waiting for Laravel service containers to be ready..."
+          # Migrations with retry
           for service in catalog checkout email; do
-            CONTAINER_READY=0
-            for i in {1..30}; do
-              if docker ps | grep -q "ecommerce_${service}"; then
-                echo "${service} container is running"
-                CONTAINER_READY=1
+            for attempt in {1..10}; do
+              if docker-compose exec -T $service php artisan migrate --force --seed >/dev/null 2>&1; then
+                echo "$service migrations OK"
                 break
               fi
-              echo "Waiting for ${service} container... ($i/30)"
-              sleep 2
+              sleep 10
             done
-            if [ $CONTAINER_READY -eq 0 ]; then
-              echo "WARNING: ${service} container is not running!"
-              docker-compose logs ${service}
-            fi
           done
 
-          # Additional wait for Laravel services to initialize
-          echo "Waiting for Laravel services to initialize..."
-          sleep 20
-
-          # Run database migrations with retry logic
-          echo "=========================================="
-          echo "Running database migrations..."
-          echo "=========================================="
-          
-          
-          # Catalog service migrations
-          echo "Running catalog service migrations..."
-          CATALOG_MIGRATED=0
-          for i in {1..10}; do
-            echo "Catalog migration attempt $i/10..."
-            docker-compose exec -T catalog php artisan migrate --seed --force > /tmp/catalog_migrate.log 2>&1
-            MIGRATE_EXIT=$?
-            if [ $MIGRATE_EXIT -eq 0 ]; then
-              echo "Catalog migrations completed successfully"
-              CATALOG_MIGRATED=1
-              break
-            else
-              echo "Catalog migration attempt $i failed with exit code $MIGRATE_EXIT"
-              echo "Migration output:"
-              cat /tmp/catalog_migrate.log
-              echo "Checking container status and logs..."
-              docker-compose ps catalog || true
-              docker-compose logs catalog --tail=30 || true
-              if [ $i -lt 10 ]; then
-                echo "Retrying in 10 seconds..."
-                sleep 10
-              fi
-            fi
-          done
-          
-          if [ $CATALOG_MIGRATED -eq 0 ]; then
-            echo "ERROR: Catalog migrations failed after 10 attempts!"
-            docker-compose logs catalog || true
-          fi
-          
-          # Checkout service migrations
-          echo "Running checkout service migrations..."
-          CHECKOUT_MIGRATED=0
-          for i in {1..10}; do
-            echo "Checkout migration attempt $i/10..."
-            docker-compose exec -T checkout php artisan migrate --force > /tmp/checkout_migrate.log 2>&1
-            MIGRATE_EXIT=$?
-            if [ $MIGRATE_EXIT -eq 0 ]; then
-              echo "Checkout migrations completed successfully"
-              CHECKOUT_MIGRATED=1
-              break
-            else
-              echo "Checkout migration attempt $i failed with exit code $MIGRATE_EXIT"
-              echo "Migration output:"
-              cat /tmp/checkout_migrate.log
-              echo "Checking container status and logs..."
-              docker-compose ps checkout || true
-              docker-compose logs checkout --tail=30 || true
-              if [ $i -lt 10 ]; then
-                echo "Retrying in 10 seconds..."
-                sleep 10
-              fi
-            fi
-          done
-          
-          if [ $CHECKOUT_MIGRATED -eq 0 ]; then
-            echo "ERROR: Checkout migrations failed after 10 attempts!"
-            docker-compose logs checkout || true
-          fi
-          
-          # Email service migrations
-          echo "Running email service migrations..."
-          EMAIL_MIGRATED=0
-          for i in {1..10}; do
-            echo "Email migration attempt $i/10..."
-            docker-compose exec -T email php artisan migrate --force > /tmp/email_migrate.log 2>&1
-            MIGRATE_EXIT=$?
-            if [ $MIGRATE_EXIT -eq 0 ]; then
-              echo "Email migrations completed successfully"
-              EMAIL_MIGRATED=1
-              break
-            else
-              echo "Email migration attempt $i failed with exit code $MIGRATE_EXIT"
-              echo "Migration output:"
-              cat /tmp/email_migrate.log
-              echo "Checking container status and logs..."
-              docker-compose ps email || true
-              docker-compose logs email --tail=30 || true
-              if [ $i -lt 10 ]; then
-                echo "Retrying in 10 seconds..."
-                sleep 10
-              fi
-            fi
-          done
-          
-          if [ $EMAIL_MIGRATED -eq 0 ]; then
-            echo "ERROR: Email migrations failed after 10 attempts!"
-            docker-compose logs email || true
-          fi
-
-          # Verify migrations completed
-          echo "=========================================="
-          echo "Verifying migrations..."
-          echo "=========================================="
-          docker-compose exec -T catalog php artisan migrate:status 2>&1 || echo "WARNING: Could not verify catalog migrations"
-          docker-compose exec -T checkout php artisan migrate:status 2>&1 || echo "WARNING: Could not verify checkout migrations"
-          docker-compose exec -T email php artisan migrate:status 2>&1 || echo "WARNING: Could not verify email migrations"
-          
-          echo "=========================================="
-          echo "Migration process completed"
-          echo "=========================================="
-
-          # Get public IP
           PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-
-          # Log completion with detailed status
-          echo "Deployment completed successfully!" > /home/ec2-user/deployment-status.txt
-          echo "Application URL: http://$PUBLIC_IP" >> /home/ec2-user/deployment-status.txt
-          echo "Deployment time: $(date)" >> /home/ec2-user/deployment-status.txt
-          echo "" >> /home/ec2-user/deployment-status.txt
-          echo "Container status:" >> /home/ec2-user/deployment-status.txt
-          docker-compose ps >> /home/ec2-user/deployment-status.txt
-
-          echo ""
-          echo "=========================================="
-          echo "DEPLOYMENT COMPLETED SUCCESSFULLY!"
-          echo "=========================================="
-          echo "Application URL: http://$PUBLIC_IP"
-          echo "=========================================="
+          echo "SUCCESS! App running at http://$PUBLIC_IP" > /home/ec2-user/DEPLOYMENT-SUCCESS.txt
 
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}-ec2'
+          Value: !Sub '${AWS::StackName}-EC2'
 
-  # Elastic IP (optional - free if instance is running)
   EIP:
     Type: AWS::EC2::EIP
     DependsOn: VPCGatewayAttachment
     Properties:
       Domain: vpc
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-eip'
 
   EIPAssociation:
     Type: AWS::EC2::EIPAssociation
@@ -661,40 +317,12 @@ Resources:
       InstanceId: !Ref EC2Instance
 
 Outputs:
-  InstanceId:
-    Description: EC2 Instance ID
-    Value: !Ref EC2Instance
-    Export:
-      Name: !Sub '${AWS::StackName}-InstanceId'
-
-  PublicIP:
-    Description: Public IP address of the EC2 instance
-    Value: !GetAtt EIP.PublicIp
-    Export:
-      Name: !Sub '${AWS::StackName}-PublicIP'
-
-  PublicDNS:
-    Description: Public DNS hostname of the EC2 instance
-    Value: !GetAtt EC2Instance.PublicDnsName
-    Export:
-      Name: !Sub '${AWS::StackName}-PublicDNS'
-
   WebsiteURL:
-    Description: Website URL (IP address)
+    Description: Your e-commerce site URL
     Value: !Sub 'http://${EIP.PublicIp}'
-    Export:
-      Name: !Sub '${AWS::StackName}-WebsiteURL'
-
-  WebsiteURLDNS:
-    Description: Website URL (DNS hostname)
-    Value: !Sub 'http://${EC2Instance.PublicDnsName}'
-    Export:
-      Name: !Sub '${AWS::StackName}-WebsiteURLDNS'
-
   SSHCommand:
-    Description: SSH command to connect to the instance
-    Value: !Sub 'ssh -i dennis-ec2.pem ec2-user@${EIP.PublicIp}'
-
-  SESEmailVerification:
-    Description: SES Email Verification - Check your email inbox and click the verification link to verify ${MailFromAddress}
-    Value: !Sub 'Please check ${MailFromAddress} inbox and verify the email address. Once verified, SES will be able to send emails.'
+    Description: SSH into instance
+    Value: !Sub 'ssh -i ${KeyName}.pem ec2-user@${EIP.PublicIp}'
+  SESNote:
+    Description: Verify SES email
+    Value: !Sub 'Check ${MailFromAddress} for AWS verification email'
