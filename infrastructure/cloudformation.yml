@@ -452,65 +452,175 @@ Resources:
             echo "Frontend service is responding on port 80"
           fi
 
+          # Ensure we're in the correct directory
+          cd /home/ec2-user/microservice-e-commerce
+          echo "Current directory: $(pwd)"
+          
+          # Verify docker-compose is available
+          if ! command -v docker-compose &> /dev/null; then
+            echo "ERROR: docker-compose command not found!"
+            which docker-compose || echo "docker-compose not in PATH"
+            exit 1
+          fi
+          echo "docker-compose found at: $(which docker-compose)"
+          
+          # Verify docker-compose.yml exists
+          if [ ! -f "docker-compose.yml" ]; then
+            echo "ERROR: docker-compose.yml not found in current directory!"
+            ls -la
+            exit 1
+          fi
+          echo "docker-compose.yml found"
+          
           # Wait for database to be fully ready before running migrations
           echo "Waiting for database to be ready..."
-          for i in {1..30}; do
+          DB_READY=0
+          for i in {1..60}; do
             if docker-compose exec -T mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
               echo "Database is ready!"
+              DB_READY=1
               break
             fi
-            echo "Waiting for database... ($i/30)"
+            echo "Waiting for database... ($i/60)"
             sleep 2
           done
+          
+          if [ $DB_READY -eq 0 ]; then
+            echo "ERROR: Database did not become ready after  within 120 seconds!"
+            docker-compose logs mysql
+            exit 1
+          fi
 
-          # Wait for Laravel services to be ready
-          echo "Waiting for Laravel services to be ready..."
-          sleep 15
+          # Wait for Laravel service containers to be running
+          echo "Waiting for Laravel service containers to be ready..."
+          for service in catalog checkout email; do
+            CONTAINER_READY=0
+            for i in {1..30}; do
+              if docker ps | grep -q "ecommerce_${service}"; then
+                echo "${service} container is running"
+                CONTAINER_READY=1
+                break
+              fi
+              echo "Waiting for ${service} container... ($i/30)"
+              sleep 2
+            done
+            if [ $CONTAINER_READY -eq 0 ]; then
+              echo "WARNING: ${service} container is not running!"
+              docker-compose logs ${service}
+            fi
+          done
+
+          # Additional wait for Laravel services to initialize
+          echo "Waiting for Laravel services to initialize..."
+          sleep 20
 
           # Run database migrations with retry logic
+          echo "=========================================="
           echo "Running database migrations..."
+          echo "=========================================="
+          
           
           # Catalog service migrations
           echo "Running catalog service migrations..."
-          for i in {1..5}; do
-            if docker-compose exec -T catalog php artisan migrate --seed --force; then
+          CATALOG_MIGRATED=0
+          for i in {1..10}; do
+            echo "Catalog migration attempt $i/10..."
+            docker-compose exec -T catalog php artisan migrate --seed --force > /tmp/catalog_migrate.log 2>&1
+            MIGRATE_EXIT=$?
+            if [ $MIGRATE_EXIT -eq 0 ]; then
               echo "Catalog migrations completed successfully"
+              CATALOG_MIGRATED=1
               break
             else
-              echo "Catalog migration attempt $i failed, retrying in 5 seconds..."
-              sleep 5
+              echo "Catalog migration attempt $i failed with exit code $MIGRATE_EXIT"
+              echo "Migration output:"
+              cat /tmp/catalog_migrate.log
+              echo "Checking container status and logs..."
+              docker-compose ps catalog || true
+              docker-compose logs catalog --tail=30 || true
+              if [ $i -lt 10 ]; then
+                echo "Retrying in 10 seconds..."
+                sleep 10
+              fi
             fi
           done
+          
+          if [ $CATALOG_MIGRATED -eq 0 ]; then
+            echo "ERROR: Catalog migrations failed after 10 attempts!"
+            docker-compose logs catalog || true
+          fi
           
           # Checkout service migrations
           echo "Running checkout service migrations..."
-          for i in {1..5}; do
-            if docker-compose exec -T checkout php artisan migrate --force; then
+          CHECKOUT_MIGRATED=0
+          for i in {1..10}; do
+            echo "Checkout migration attempt $i/10..."
+            docker-compose exec -T checkout php artisan migrate --force > /tmp/checkout_migrate.log 2>&1
+            MIGRATE_EXIT=$?
+            if [ $MIGRATE_EXIT -eq 0 ]; then
               echo "Checkout migrations completed successfully"
+              CHECKOUT_MIGRATED=1
               break
             else
-              echo "Checkout migration attempt $i failed, retrying in 5 seconds..."
-              sleep 5
+              echo "Checkout migration attempt $i failed with exit code $MIGRATE_EXIT"
+              echo "Migration output:"
+              cat /tmp/checkout_migrate.log
+              echo "Checking container status and logs..."
+              docker-compose ps checkout || true
+              docker-compose logs checkout --tail=30 || true
+              if [ $i -lt 10 ]; then
+                echo "Retrying in 10 seconds..."
+                sleep 10
+              fi
             fi
           done
           
+          if [ $CHECKOUT_MIGRATED -eq 0 ]; then
+            echo "ERROR: Checkout migrations failed after 10 attempts!"
+            docker-compose logs checkout || true
+          fi
+          
           # Email service migrations
           echo "Running email service migrations..."
-          for i in {1..5}; do
-            if docker-compose exec -T email php artisan migrate --force; then
+          EMAIL_MIGRATED=0
+          for i in {1..10}; do
+            echo "Email migration attempt $i/10..."
+            docker-compose exec -T email php artisan migrate --force > /tmp/email_migrate.log 2>&1
+            MIGRATE_EXIT=$?
+            if [ $MIGRATE_EXIT -eq 0 ]; then
               echo "Email migrations completed successfully"
+              EMAIL_MIGRATED=1
               break
             else
-              echo "Email migration attempt $i failed, retrying in 5 seconds..."
-              sleep 5
+              echo "Email migration attempt $i failed with exit code $MIGRATE_EXIT"
+              echo "Migration output:"
+              cat /tmp/email_migrate.log
+              echo "Checking container status and logs..."
+              docker-compose ps email || true
+              docker-compose logs email --tail=30 || true
+              if [ $i -lt 10 ]; then
+                echo "Retrying in 10 seconds..."
+                sleep 10
+              fi
             fi
           done
+          
+          if [ $EMAIL_MIGRATED -eq 0 ]; then
+            echo "ERROR: Email migrations failed after 10 attempts!"
+            docker-compose logs email || true
+          fi
 
           # Verify migrations completed
+          echo "=========================================="
           echo "Verifying migrations..."
-          docker-compose exec -T catalog php artisan migrate:status || echo "WARNING: Could not verify catalog migrations"
-          docker-compose exec -T checkout php artisan migrate:status || echo "WARNING: Could not verify checkout migrations"
-          docker-compose exec -T email php artisan migrate:status || echo "WARNING: Could not verify email migrations"
+          echo "=========================================="
+          docker-compose exec -T catalog php artisan migrate:status 2>&1 || echo "WARNING: Could not verify catalog migrations"
+          docker-compose exec -T checkout php artisan migrate:status 2>&1 || echo "WARNING: Could not verify checkout migrations"
+          docker-compose exec -T email php artisan migrate:status 2>&1 || echo "WARNING: Could not verify email migrations"
+          
+          echo "=========================================="
+          echo "Migration process completed"
+          echo "=========================================="
 
           # Get public IP
           PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
