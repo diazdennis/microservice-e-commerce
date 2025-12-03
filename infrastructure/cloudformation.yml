@@ -210,17 +210,36 @@ Resources:
           
           # Build frontend (if frontend directory exists)
           if [ -d "frontend" ]; then
+            echo "Building frontend..."
             cd frontend
-            npm install || echo "npm install failed, continuing..."
-            npm run build || echo "npm build failed, continuing..."
+            npm install
+            if [ $? -eq 0 ]; then
+              npm run build
+              if [ $? -ne 0 ]; then
+                echo "ERROR: Frontend build failed!"
+                exit 1
+              fi
+            else
+              echo "ERROR: npm install failed!"
+              exit 1
+            fi
             cd ..
+            echo "Frontend build completed successfully"
           else
-            echo "Frontend directory not found, skipping build"
+            echo "ERROR: Frontend directory not found!"
+            exit 1
           fi
           
-          # Create .env file
+          # Verify frontend dist exists
+          if [ ! -d "frontend/dist" ] || [ -z "$(ls -A frontend/dist)" ]; then
+            echo "ERROR: Frontend dist directory is empty or missing!"
+            exit 1
+          fi
+          
+          # Create .env file with correct format for docker-compose
+          echo "Creating .env file..."
           cat > .env <<ENVFILE
-          # Application Key
+          # Application Key (docker-compose.yml will add base64: prefix)
           APP_KEY=${AppKey}
           
           # AWS SES Configuration
@@ -230,36 +249,96 @@ Resources:
           MAIL_FROM_ADDRESS=${MailFromAddress}
           MAIL_FROM_NAME=${MailFromName}
           
-          # Database Configuration
+          # Database Configuration (matching docker-compose.yml)
           MYSQL_ROOT_PASSWORD=${MySQLRootPassword}
           MYSQL_USER=appuser
           MYSQL_PASSWORD=${MySQLAppPassword}
+          
+          # CORS Configuration
+          CORS_ALLOWED_ORIGINS=*
           ENVFILE
           
+          # Verify .env file was created
+          if [ ! -f ".env" ]; then
+            echo "ERROR: .env file was not created!"
+            exit 1
+          fi
+          
+          echo ".env file created successfully"
+          
           # Wait for Docker to be ready
+          echo "Waiting for Docker to be ready..."
           sleep 10
+          
+          # Verify Docker is running
+          if ! systemctl is-active --quiet docker; then
+            echo "ERROR: Docker is not running!"
+            systemctl status docker
+            exit 1
+          fi
           
           # Start services
           echo "Starting Docker Compose services..."
-          docker-compose up -d --build || {
-            echo "Docker Compose failed, checking logs..."
+          docker-compose up -d --build
+          
+          if [ $? -ne 0 ]; then
+            echo "ERROR: Docker Compose failed!"
+            echo "Checking logs..."
             docker-compose logs
             exit 1
-          }
+          fi
           
           # Wait for services to be ready
           echo "Waiting for services to be ready..."
           sleep 30
           
+          # Verify all containers are running
+          echo "Verifying container status..."
+          if ! docker-compose ps | grep -q "Up"; then
+            echo "WARNING: Some containers may not be running"
+            docker-compose ps
+          fi
+          
+          # Check if frontend container is running and port 80 is listening
+          echo "Checking frontend service..."
+          sleep 5
+          if ! docker ps | grep -q "ecommerce_frontend"; then
+            echo "ERROR: Frontend container is not running!"
+            docker-compose logs frontend
+            exit 1
+          fi
+          
+          # Test if port 80 is accessible
+          if ! curl -f http://localhost > /dev/null 2>&1; then
+            echo "WARNING: Port 80 is not responding, checking logs..."
+            docker-compose logs frontend --tail=20
+          else
+            echo "Frontend service is responding on port 80"
+          fi
+          
           # Run database migrations
           echo "Running database migrations..."
-          docker-compose exec -T catalog php artisan migrate --seed || echo "Catalog migration failed"
-          docker-compose exec -T checkout php artisan migrate || echo "Checkout migration failed"
-          docker-compose exec -T email php artisan migrate || echo "Email migration failed"
+          docker-compose exec -T catalog php artisan migrate --seed || echo "WARNING: Catalog migration failed"
+          docker-compose exec -T checkout php artisan migrate || echo "WARNING: Checkout migration failed"
+          docker-compose exec -T email php artisan migrate || echo "WARNING: Email migration failed"
           
-          # Log completion
+          # Get public IP
+          PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+          
+          # Log completion with detailed status
           echo "Deployment completed successfully!" > /home/ec2-user/deployment-status.txt
-          echo "Application URL: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)" >> /home/ec2-user/deployment-status.txt
+          echo "Application URL: http://$PUBLIC_IP" >> /home/ec2-user/deployment-status.txt
+          echo "Deployment time: $(date)" >> /home/ec2-user/deployment-status.txt
+          echo "" >> /home/ec2-user/deployment-status.txt
+          echo "Container status:" >> /home/ec2-user/deployment-status.txt
+          docker-compose ps >> /home/ec2-user/deployment-status.txt
+          
+          echo ""
+          echo "=========================================="
+          echo "DEPLOYMENT COMPLETED SUCCESSFULLY!"
+          echo "=========================================="
+          echo "Application URL: http://$PUBLIC_IP"
+          echo "=========================================="
 
       Tags:
         - Key: Name
