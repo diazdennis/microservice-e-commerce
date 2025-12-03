@@ -314,4 +314,4 @@ Outputs:
 
   SSHCommand:
     Description: SSH command to connect to the instance
-    Value: !Sub 'ssh -i your-key.pem ec2-user@${EIP.PublicIp}'
+    Value: !Sub 'ssh -i dennis-ec2.pem ec2-user@${EIP.PublicIp}'
