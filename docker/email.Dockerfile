@@ -41,9 +41,36 @@ RUN composer install --optimize-autoloader --no-dev
 # Generate application key if .env exists
 RUN if [ -f .env ]; then php artisan key:generate; fi
 
-# Configure Apache
+# Configure Apache for Laravel
 RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
 RUN a2enmod rewrite
+
+# Set DocumentRoot to Laravel's public directory
+RUN sed -i 's|DocumentRoot /var/www/html|DocumentRoot /var/www/html/public|g' /etc/apache2/sites-available/000-default.conf
+RUN sed -i 's|<Directory /var/www/html>|<Directory /var/www/html/public>|g' /etc/apache2/sites-available/000-default.conf
+RUN sed -i 's|AllowOverride None|AllowOverride All|g' /etc/apache2/sites-available/000-default.conf
+
+# Create .htaccess file if it doesn't exist
+RUN if [ ! -f /var/www/html/public/.htaccess ]; then \
+    echo '<IfModule mod_rewrite.c>' > /var/www/html/public/.htaccess && \
+    echo '    <IfModule mod_negotiation.c>' >> /var/www/html/public/.htaccess && \
+    echo '        Options -MultiViews -Indexes' >> /var/www/html/public/.htaccess && \
+    echo '    </IfModule>' >> /var/www/html/public/.htaccess && \
+    echo '    RewriteEngine On' >> /var/www/html/public/.htaccess && \
+    echo '    RewriteCond %{HTTP:Authorization} .' >> /var/www/html/public/.htaccess && \
+    echo '    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]' >> /var/www/html/public/.htaccess && \
+    echo '    RewriteCond %{REQUEST_FILENAME} !-d' >> /var/www/html/public/.htaccess && \
+    echo '    RewriteCond %{REQUEST_URI} (.+)/$' >> /var/www/html/public/.htaccess && \
+    echo '    RewriteRule ^ %1 [L,R=301]' >> /var/www/html/public/.htaccess && \
+    echo '    RewriteCond %{REQUEST_FILENAME} !-d' >> /var/www/html/public/.htaccess && \
+    echo '    RewriteCond %{REQUEST_FILENAME} !-f' >> /var/www/html/public/.htaccess && \
+    echo '    RewriteRule ^ index.php [L]' >> /var/www/html/public/.htaccess && \
+    echo '</IfModule>' >> /var/www/html/public/.htaccess; \
+    fi
+
+# Set permissions for .htaccess
+RUN chown www-data:www-data /var/www/html/public/.htaccess && \
+    chmod 644 /var/www/html/public/.htaccess
 
 # Expose port 80
 EXPOSE 80
