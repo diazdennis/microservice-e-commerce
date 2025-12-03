@@ -5,6 +5,7 @@ composer.phar
 
 # Node.js dependencies
 /node_modules/
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -49,6 +50,14 @@ docker-compose.override.yml
 # Vue.js build
 /dist/
 /build/
+
+# Frontend build/dist directories
+frontend/dist/
+frontend/build/
+**/frontend/dist/
+**/frontend/build/
+dist/
+build/
 
 # Logs
 logs
