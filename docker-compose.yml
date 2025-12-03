@@ -24,21 +24,10 @@ services:
       dockerfile: docker/catalog.Dockerfile
     container_name: ecommerce_catalog
     restart: unless-stopped
+    env_file:
+      - services/catalog/.env
     environment:
-      APP_NAME: "Catalog Service"
-      APP_ENV: production
-      APP_KEY: base64:${APP_KEY}
-      APP_DEBUG: false
-      APP_URL: http://localhost
-
-      DB_CONNECTION: mysql
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_DATABASE: catalog_db
-      DB_USERNAME: appuser
-      DB_PASSWORD: apppassword
-
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+      DB_HOST: mysql  # Docker network hostname
     depends_on:
       - mysql
     networks:
@@ -51,24 +40,10 @@ services:
       dockerfile: docker/checkout.Dockerfile
     container_name: ecommerce_checkout
     restart: unless-stopped
+    env_file:
+      - services/checkout/.env
     environment:
-      APP_NAME: "Checkout Service"
-      APP_ENV: production
-      APP_KEY: base64:${APP_KEY}
-      APP_DEBUG: false
-      APP_URL: http://localhost
-
-      DB_CONNECTION: mysql
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_DATABASE: checkout_db
-      DB_USERNAME: appuser
-      DB_PASSWORD: apppassword
-
-      CATALOG_SERVICE_URL: http://catalog
-      EMAIL_SERVICE_URL: http://email
-
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+      DB_HOST: mysql  # Docker network hostname
     depends_on:
       - mysql
       - catalog
@@ -83,32 +58,10 @@ services:
       dockerfile: docker/email.Dockerfile
     container_name: ecommerce_email
     restart: unless-stopped
+    env_file:
+      - services/email/.env
     environment:
-      APP_NAME: "Email Service"
-      APP_ENV: production
-      APP_KEY: base64:${APP_KEY}
-      APP_DEBUG: false
-      APP_URL: http://localhost
-
-      DB_CONNECTION: mysql
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_DATABASE: email_db
-      DB_USERNAME: appuser
-      DB_PASSWORD: apppassword
-
-      # Email configuration (AWS SES for production)
-      MAIL_MAILER: smtp
-      MAIL_HOST: email-smtp.${AWS_REGION:-us-east-1}.amazonaws.com
-      MAIL_PORT: 587
-      MAIL_USERNAME: ${AWS_SES_SMTP_USERNAME}
-      MAIL_PASSWORD: ${AWS_SES_SMTP_PASSWORD}
-      MAIL_ENCRYPTION: tls
-      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-noreply@example.com}
-      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-E-Commerce Store}
-      AWS_REGION: ${AWS_REGION:-us-east-1}
-
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+      DB_HOST: mysql  # Docker network hostname
     depends_on:
       - mysql
     networks:

@@ -19,7 +19,27 @@ if [ ! -f "docker-compose.yml" ]; then
     exit 1
 fi
 
-# Step 1: Pull latest code (if not already done)
+# Step 1: Check for required .env files
+echo -e "${CYAN}[*] Checking for required .env files...${NC}"
+if [ ! -f ".env" ]; then
+    echo -e "${RED}[X] Error: Root .env file not found! This should be created during initial deployment.${NC}"
+    exit 1
+fi
+
+if [ ! -f "services/catalog/.env" ] || [ ! -f "services/checkout/.env" ] || [ ! -f "services/email/.env" ]; then
+    echo -e "${RED}[X] Error: Service-specific .env files not found! These should be created during initial deployment.${NC}"
+    echo -e "${YELLOW}[!] Expected files: services/catalog/.env, services/checkout/.env, services/email/.env${NC}"
+    exit 1
+fi
+
+if [ ! -f "frontend/.env.production" ]; then
+    echo -e "${RED}[X] Error: Frontend production .env file not found! This should be created during initial deployment.${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}[OK] All .env files are present${NC}"
+
+# Step 2: Pull latest code (if not already done)
 echo -e "${CYAN}[*] Checking for latest code...${NC}"
 if [ -d ".git" ]; then
     echo -e "${YELLOW}[*] Pulling latest changes from git...${NC}"
@@ -112,5 +132,6 @@ echo -e "  2. Clear browser cache"
 echo -e "  3. Check if nginx is serving the correct files:"
 echo -e "     docker-compose exec frontend ls -la /var/www/frontend/dist"
 echo ""
+echo -e "${GREEN}Note: Service-specific .env files have been preserved and are not affected by this update.${NC}"
 echo -e "${GREEN}[OK] All done!${NC}"
 

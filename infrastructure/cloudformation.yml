@@ -236,35 +236,108 @@ Resources:
             exit 1
           fi
           
-          # Create .env file with correct format for docker-compose
-          echo "Creating .env file..."
+          # Create shared .env file for docker-compose variables
+          echo "Creating shared .env file..."
           cat > .env <<ENVFILE
-          # Application Key (docker-compose.yml will add base64: prefix)
-          APP_KEY=${AppKey}
-          
-          # AWS SES Configuration
-          AWS_REGION=${AWSRegion}
-          AWS_SES_SMTP_USERNAME=${SESUsername}
-          AWS_SES_SMTP_PASSWORD=${SESPassword}
-          MAIL_FROM_ADDRESS=${MailFromAddress}
-          MAIL_FROM_NAME=${MailFromName}
-          
-          # Database Configuration (matching docker-compose.yml)
+          # Shared Docker Compose variables
           MYSQL_ROOT_PASSWORD=${MySQLRootPassword}
           MYSQL_USER=appuser
           MYSQL_PASSWORD=${MySQLAppPassword}
-          
-          # CORS Configuration
+          APP_KEY=base64:${AppKey}
           CORS_ALLOWED_ORIGINS=*
           ENVFILE
-          
-          # Verify .env file was created
-          if [ ! -f ".env" ]; then
-            echo "ERROR: .env file was not created!"
+
+          # Create service-specific .env files
+          echo "Creating service-specific .env files..."
+
+          # Catalog service .env
+          mkdir -p services/catalog
+          cat > services/catalog/.env <<CATALOG_ENV
+APP_NAME="Catalog Service"
+APP_ENV=production
+APP_KEY=base64:${AppKey}
+APP_DEBUG=false
+APP_URL=http://localhost
+
+DB_CONNECTION=mysql
+DB_HOST=mysql
+DB_PORT=3306
+DB_DATABASE=catalog_db
+DB_USERNAME=appuser
+DB_PASSWORD=apppassword
+
+CORS_ALLOWED_ORIGINS=*
+CATALOG_ENV
+
+          # Checkout service .env
+          mkdir -p services/checkout
+          cat > services/checkout/.env <<CHECKOUT_ENV
+APP_NAME="Checkout Service"
+APP_ENV=production
+APP_KEY=base64:${AppKey}
+APP_DEBUG=false
+APP_URL=http://localhost
+
+DB_CONNECTION=mysql
+DB_HOST=mysql
+DB_PORT=3306
+DB_DATABASE=checkout_db
+DB_USERNAME=appuser
+DB_PASSWORD=apppassword
+
+# Service URLs (Docker network hostnames - internal communication)
+CATALOG_SERVICE_URL=http://catalog
+EMAIL_SERVICE_URL=http://email
+
+CORS_ALLOWED_ORIGINS=*
+CHECKOUT_ENV
+
+          # Email service .env
+          mkdir -p services/email
+          cat > services/email/.env <<EMAIL_ENV
+APP_NAME="Email Service"
+APP_ENV=production
+APP_KEY=base64:${AppKey}
+APP_DEBUG=false
+APP_URL=http://localhost
+
+DB_CONNECTION=mysql
+DB_HOST=mysql
+DB_PORT=3306
+DB_DATABASE=email_db
+DB_USERNAME=appuser
+DB_PASSWORD=apppassword
+
+# AWS SES Configuration
+MAIL_MAILER=smtp
+MAIL_HOST=email-smtp.${AWSRegion}.amazonaws.com
+MAIL_PORT=587
+MAIL_USERNAME=${SESUsername}
+MAIL_PASSWORD=${SESPassword}
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=${MailFromAddress}
+MAIL_FROM_NAME="${MailFromName}"
+AWS_REGION=${AWSRegion}
+
+CORS_ALLOWED_ORIGINS=*
+EMAIL_ENV
+
+          # Create frontend production environment
+          mkdir -p frontend
+          cat > frontend/.env.production <<FRONTEND_ENV
+# Frontend API endpoints (relative paths work with Nginx proxy)
+VITE_CATALOG_API=/api
+VITE_CHECKOUT_API=/api
+# Note: No email service URL - frontend never calls email service directly
+FRONTEND_ENV
+
+          # Verify files were created
+          if [ ! -f ".env" ] || [ ! -f "services/catalog/.env" ] || [ ! -f "services/checkout/.env" ] || [ ! -f "services/email/.env" ] || [ ! -f "frontend/.env.production" ]; then
+            echo "ERROR: Some .env files were not created!"
             exit 1
           fi
-          
-          echo ".env file created successfully"
+
+          echo "All .env files created successfully"
           
           # Wait for Docker to be ready
           echo "Waiting for Docker to be ready..."
