@@ -4,18 +4,18 @@ Description: 'E-Commerce Microservices Infrastructure - Free Tier Compliant with
 Parameters:
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
-    Description: Name of an existing EC2 KeyPair for SSH access
+    Description: `Name of an existing EC2 KeyPair for SSH access`
 
   InstanceType:
     Type: String
-    Description: EC2 instance type (t2.micro for free tier)
+    Description: `EC2 instance type (t2.micro for free tier)`
     Default: t2.micro
     AllowedValues:
       - t2.micro
 
   LatestAmiId:
     Type: String
-    Description: Amazon Linux 2023 AMI ID for your region. The deployment script will automatically fetch this, or you can find it in the EC2 console. To get it manually, run: aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64 --region <your-region> --query 'Parameter.Value' --output text
+    Description: "Amazon Linux 2023 AMI ID for your region. The deployment script will automatically fetch this, or you can find it in the EC2 console. To get it manually, run: aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64 --region <your-region> --query Parameter.Value --output text"
 
   GitHubRepoUrl:
     Type: String
@@ -29,39 +29,39 @@ Parameters:
 
   MySQLRootPassword:
     Type: String
-    Description: MySQL root password (strong password recommended)
+    Description: 'MySQL root password (strong password recommended)'
     NoEcho: true
     MinLength: 8
 
   MySQLAppPassword:
     Type: String
-    Description: MySQL application user password
+    Description: 'MySQL application user password'
     NoEcho: true
     MinLength: 8
 
   AWSRegion:
     Type: String
-    Description: AWS Region for SES
+    Description: 'AWS Region for SES'
     Default: us-east-1
 
   SESUsername:
     Type: String
-    Description: AWS SES SMTP Username
+    Description: 'AWS SES SMTP Username'
     NoEcho: true
 
   SESPassword:
     Type: String
-    Description: AWS SES SMTP Password
+    Description: 'AWS SES SMTP Password'
     NoEcho: true
 
   MailFromAddress:
     Type: String
-    Description: Verified email address in AWS SES (sender email)
+    Description: 'Verified email address in AWS SES (sender email)'
     Default: noreply@example.com
 
   MailFromName:
     Type: String
-    Description: Email sender name
+    Description: 'Email sender name'
     Default: 'E-Commerce Store'
 
 Resources:
