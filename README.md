@@ -87,8 +87,8 @@ A complete e-commerce system built with microservices architecture, featuring pr
 
 1. **Clone the repository**
    ```bash
-   git clone <your-repo-url>
-   cd e-commerce-microservices
+   git clone https://github.com/diazdennis/microservice-e-commerce.git
+   cd microservice-e-commerce
    ```
 
 2. **Setup databases**
@@ -125,7 +125,7 @@ A complete e-commerce system built with microservices architecture, featuring pr
 
 1. **Clone and setup**
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/diazdennis/microservice-e-commerce.git
    cd microservice-ecommerce
    ```
 
@@ -197,7 +197,7 @@ To deploy code changes after initial setup:
 ssh -i your-key.pem ec2-user@<public-ip>
 
 # Navigate to project and pull latest changes
-cd /home/ec2-user/e-commerce-microservices
+cd /home/ec2-user/microservice-e-commerce
 git pull origin main
 
 # Rebuild and restart containers
@@ -337,19 +337,6 @@ chmod +x start-local.sh
 ./start-local.sh
 ```
 
-## 📊 Free Tier Compliance
-
-All resources fit within AWS Free Tier limits:
-
-| Service | Free Tier Limit | Usage |
-|---------|----------------|--------|
-| EC2 t2.micro | 750 hrs/month | ~720 hrs |
-| EBS Storage | 30 GB | ~8 GB |
-| SES Emails | 62K/month (from EC2) | <100 |
-| Data Transfer | 100 GB/month | <1 GB |
-
-**Total estimated cost**: $0/month
-
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -357,10 +344,6 @@ All resources fit within AWS Free Tier limits:
 3. Make your changes
 4. Test thoroughly
 5. Submit a pull request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## 🆘 Troubleshooting
 
@@ -388,13 +371,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 **Laravel logs**: `services/*/storage/logs/laravel.log`
 **Docker logs**: `docker-compose logs [service-name]`
 **Nginx logs**: `docker-compose logs frontend`
-
-## 📞 Support
-
-For issues or questions:
-1. Check the troubleshooting section
-2. Review the logs
-3. Create an issue in the repository
 
 ---
 
