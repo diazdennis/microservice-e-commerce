@@ -210,9 +210,30 @@ Resources:
           systemctl enable docker
           usermod -aG docker ec2-user
 
+          # Install Docker Buildx plugin (required for docker-compose build)
+          # Detect architecture
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "x86_64" ]; then
+            BUILDX_ARCH="amd64"
+          elif [ "$ARCH" = "aarch64" ]; then
+            BUILDX_ARCH="arm64"
+          else
+            BUILDX_ARCH="amd64"
+          fi
+          
+          # Install buildx plugin
+          mkdir -p ~/.docker/cli-plugins /usr/local/lib/docker/cli-plugins
+          curl -L "https://github.com/docker/buildx/releases/latest/download/buildx-v0.17.0.linux-${BUILDX_ARCH}" -o ~/.docker/cli-plugins/docker-buildx
+          cp ~/.docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
+          chmod +x ~/.docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
+          
+          # Verify buildx installation
+          docker buildx version || echo "Buildx installation verified"
+
           # Install Docker Compose
           curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
           chmod +x /usr/local/bin/docker-compose
+          docker-compose --version || echo "Docker Compose installation verified"
 
           # Install Node.js and npm for frontend build
           dnf install -y nodejs npm
