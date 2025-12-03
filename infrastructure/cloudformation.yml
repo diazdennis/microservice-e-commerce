@@ -59,7 +59,7 @@ Parameters:
   MailFromAddress:
     Type: String
     Description: "Verified email address in AWS SES (sender email)"
-    Default: noreply@e-commerce.com
+    Default: dennis.diaz.tech@gmail.com
 
   MailFromName:
     Type: String
@@ -181,6 +181,13 @@ Resources:
       InstanceProfileName: !Sub '${AWS::StackName}-instance-profile'
       Roles:
         - !Ref EC2Role
+
+  # SES Email Verification
+  SESEmailIdentity:
+    Type: AWS::SES::EmailIdentity
+    Properties:
+      EmailIdentity: !Ref MailFromAddress
+    DependsOn: EC2Role
 
   # EC2 Instance
   EC2Instance:
@@ -445,11 +452,65 @@ Resources:
             echo "Frontend service is responding on port 80"
           fi
 
-          # Run database migrations
+          # Wait for database to be fully ready before running migrations
+          echo "Waiting for database to be ready..."
+          for i in {1..30}; do
+            if docker-compose exec -T mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
+              echo "Database is ready!"
+              break
+            fi
+            echo "Waiting for database... ($i/30)"
+            sleep 2
+          done
+
+          # Wait for Laravel services to be ready
+          echo "Waiting for Laravel services to be ready..."
+          sleep 15
+
+          # Run database migrations with retry logic
           echo "Running database migrations..."
-          docker-compose exec -T catalog php artisan migrate --seed || echo "WARNING: Catalog migration failed"
-          docker-compose exec -T checkout php artisan migrate || echo "WARNING: Checkout migration failed"
-          docker-compose exec -T email php artisan migrate || echo "WARNING: Email migration failed"
+          
+          # Catalog service migrations
+          echo "Running catalog service migrations..."
+          for i in {1..5}; do
+            if docker-compose exec -T catalog php artisan migrate --seed --force; then
+              echo "Catalog migrations completed successfully"
+              break
+            else
+              echo "Catalog migration attempt $i failed, retrying in 5 seconds..."
+              sleep 5
+            fi
+          done
+          
+          # Checkout service migrations
+          echo "Running checkout service migrations..."
+          for i in {1..5}; do
+            if docker-compose exec -T checkout php artisan migrate --force; then
+              echo "Checkout migrations completed successfully"
+              break
+            else
+              echo "Checkout migration attempt $i failed, retrying in 5 seconds..."
+              sleep 5
+            fi
+          done
+          
+          # Email service migrations
+          echo "Running email service migrations..."
+          for i in {1..5}; do
+            if docker-compose exec -T email php artisan migrate --force; then
+              echo "Email migrations completed successfully"
+              break
+            else
+              echo "Email migration attempt $i failed, retrying in 5 seconds..."
+              sleep 5
+            fi
+          done
+
+          # Verify migrations completed
+          echo "Verifying migrations..."
+          docker-compose exec -T catalog php artisan migrate:status || echo "WARNING: Could not verify catalog migrations"
+          docker-compose exec -T checkout php artisan migrate:status || echo "WARNING: Could not verify checkout migrations"
+          docker-compose exec -T email php artisan migrate:status || echo "WARNING: Could not verify email migrations"
 
           # Get public IP
           PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
@@ -523,3 +584,7 @@ Outputs:
   SSHCommand:
     Description: SSH command to connect to the instance
     Value: !Sub 'ssh -i dennis-ec2.pem ec2-user@${EIP.PublicIp}'
+
+  SESEmailVerification:
+    Description: SES Email Verification - Check your email inbox and click the verification link to verify ${MailFromAddress}
+    Value: !Sub 'Please check ${MailFromAddress} inbox and verify the email address. Once verified, SES will be able to send emails.'
