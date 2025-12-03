@@ -6,7 +6,7 @@ set -e
 
 # Default values
 STACK_NAME="${STACK_NAME:-ecommerce-app}"
-REGION="${REGION:-us-east-1}"
+REGION="${REGION:-ap-southeast-2}"
 
 # Colors for output
 RED='\033[0;31m'

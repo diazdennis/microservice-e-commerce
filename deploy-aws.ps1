@@ -2,17 +2,17 @@
 # This script helps deploy the e-commerce microservices to AWS
 
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$KeyName,
     
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$GitHubRepoUrl,
     
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$StackName = "ecommerce-app",
     
-    [Parameter(Mandatory=$false)]
-    [string]$Region = "us-east-1"
+    [Parameter(Mandatory = $false)]
+    [string]$Region = "ap-southeast-2"
 )
 
 Write-Host "[*] Starting AWS CloudFormation Deployment..." -ForegroundColor Cyan
@@ -21,7 +21,8 @@ Write-Host "[*] Starting AWS CloudFormation Deployment..." -ForegroundColor Cyan
 try {
     $awsVersion = aws --version 2>&1
     Write-Host "[OK] AWS CLI found: $awsVersion" -ForegroundColor Green
-} catch {
+}
+catch {
     Write-Host "[X] AWS CLI not found. Please install AWS CLI first." -ForegroundColor Red
     Write-Host "    Download from: https://awscli.amazonaws.com/AWSCLIV2.msi" -ForegroundColor Yellow
     exit 1
@@ -36,7 +37,8 @@ $ssmOutput = aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/a
 if ($LASTEXITCODE -eq 0 -and $ssmOutput -and $ssmOutput -notmatch "AccessDenied|error|Error") {
     $amiId = $ssmOutput.Trim()
     Write-Host "[OK] Found AMI ID via SSM: $amiId" -ForegroundColor Green
-} else {
+}
+else {
     Write-Host "[!] SSM access denied or unavailable. Trying alternative method..." -ForegroundColor Yellow
     
     # Try EC2 describe-images as alternative (uses ec2:DescribeImages permission)
@@ -44,7 +46,8 @@ if ($LASTEXITCODE -eq 0 -and $ssmOutput -and $ssmOutput -notmatch "AccessDenied|
     if ($LASTEXITCODE -eq 0 -and $ec2Output -and $ec2Output -notmatch "AccessDenied|error|Error") {
         $amiId = $ec2Output.Trim()
         Write-Host "[OK] Found AMI ID via EC2: $amiId" -ForegroundColor Green
-    } else {
+    }
+    else {
         Write-Host "[!] Could not automatically fetch AMI ID (insufficient permissions)." -ForegroundColor Yellow
         Write-Host "    You'll need to provide the AMI ID manually." -ForegroundColor Yellow
     }
@@ -161,7 +164,8 @@ try {
     Write-Host "Your application is now live!" -ForegroundColor Green
     Write-Host "========================================`n" -ForegroundColor Green
     
-} catch {
+}
+catch {
     Write-Host "[X] Deployment failed!" -ForegroundColor Red
     Write-Host "    Error: $_" -ForegroundColor Red
     Write-Host "`n[*] To check stack status:" -ForegroundColor Yellow
