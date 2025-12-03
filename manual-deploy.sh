@@ -252,17 +252,134 @@ sleep 30
 echo -e "${CYAN}[*] Step 11: Checking service status...${NC}"
 $COMPOSE_CMD ps
 
-# Step 12: Run Migrations
-echo -e "${CYAN}[*] Step 12: Running database migrations...${NC}"
-$COMPOSE_CMD exec -T catalog php artisan migrate --seed || echo -e "${YELLOW}[!] Catalog migration failed or already up to date${NC}"
-$COMPOSE_CMD exec -T checkout php artisan migrate || echo -e "${YELLOW}[!] Checkout migration failed or already up to date${NC}"
-$COMPOSE_CMD exec -T email php artisan migrate || echo -e "${YELLOW}[!] Email migration failed or already up to date${NC}"
+# Step 12: Wait for MySQL to be ready
+echo -e "${CYAN}[*] Step 12: Waiting for MySQL to be ready...${NC}"
+MAX_RETRIES=30
+RETRY_COUNT=0
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+  if $COMPOSE_CMD exec -T mysql mysqladmin ping -h localhost -u root -p$MYSQL_ROOT_PASS --silent 2>/dev/null; then
+    echo -e "${GREEN}[OK] MySQL is ready${NC}"
+    break
+  fi
+  RETRY_COUNT=$((RETRY_COUNT + 1))
+  echo -e "${YELLOW}[!] Waiting for MySQL... ($RETRY_COUNT/$MAX_RETRIES)${NC}"
+  sleep 2
+done
 
-# Step 13: Get Public IP
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+  echo -e "${RED}[X] MySQL did not become ready in time${NC}"
+  exit 1
+fi
+
+# Step 13: Create databases if they don't exist
+echo -e "${CYAN}[*] Step 13: Creating databases if needed...${NC}"
+$COMPOSE_CMD exec -T mysql mysql -uroot -p$MYSQL_ROOT_PASS -e "CREATE DATABASE IF NOT EXISTS catalog_db;" 2>/dev/null || echo -e "${YELLOW}[!] Could not create catalog_db${NC}"
+$COMPOSE_CMD exec -T mysql mysql -uroot -p$MYSQL_ROOT_PASS -e "CREATE DATABASE IF NOT EXISTS checkout_db;" 2>/dev/null || echo -e "${YELLOW}[!] Could not create checkout_db${NC}"
+$COMPOSE_CMD exec -T mysql mysql -uroot -p$MYSQL_ROOT_PASS -e "CREATE DATABASE IF NOT EXISTS email_db;" 2>/dev/null || echo -e "${YELLOW}[!] Could not create email_db${NC}"
+
+# Grant permissions
+$COMPOSE_CMD exec -T mysql mysql -uroot -p$MYSQL_ROOT_PASS -e "GRANT ALL PRIVILEGES ON catalog_db.* TO 'appuser'@'%';" 2>/dev/null || true
+$COMPOSE_CMD exec -T mysql mysql -uroot -p$MYSQL_ROOT_PASS -e "GRANT ALL PRIVILEGES ON checkout_db.* TO 'appuser'@'%';" 2>/dev/null || true
+$COMPOSE_CMD exec -T mysql mysql -uroot -p$MYSQL_ROOT_PASS -e "GRANT ALL PRIVILEGES ON email_db.* TO 'appuser'@'%';" 2>/dev/null || true
+$COMPOSE_CMD exec -T mysql mysql -uroot -p$MYSQL_ROOT_PASS -e "FLUSH PRIVILEGES;" 2>/dev/null || true
+
+# Step 14: Clear Laravel config cache for all services
+echo -e "${CYAN}[*] Step 14: Clearing Laravel config cache...${NC}"
+$COMPOSE_CMD exec -T catalog php artisan config:clear 2>/dev/null || echo -e "${YELLOW}[!] Could not clear catalog config cache${NC}"
+$COMPOSE_CMD exec -T checkout php artisan config:clear 2>/dev/null || echo -e "${YELLOW}[!] Could not clear checkout config cache${NC}"
+$COMPOSE_CMD exec -T email php artisan config:clear 2>/dev/null || echo -e "${YELLOW}[!] Could not clear email config cache${NC}"
+
+$COMPOSE_CMD exec -T catalog php artisan cache:clear 2>/dev/null || echo -e "${YELLOW}[!] Could not clear catalog cache${NC}"
+$COMPOSE_CMD exec -T checkout php artisan cache:clear 2>/dev/null || echo -e "${YELLOW}[!] Could not clear checkout cache${NC}"
+$COMPOSE_CMD exec -T email php artisan cache:clear 2>/dev/null || echo -e "${YELLOW}[!] Could not clear email cache${NC}"
+
+# Step 15: Run Migrations
+echo -e "${CYAN}[*] Step 15: Running database migrations...${NC}"
+
+# Catalog migrations
+echo -e "${CYAN}  Running catalog migrations...${NC}"
+if $COMPOSE_CMD exec -T catalog php artisan migrate --force --seed 2>/dev/null; then
+  echo -e "${GREEN}  [OK] Catalog migrations completed${NC}"
+else
+  echo -e "${YELLOW}[!] Catalog migration failed or already up to date${NC}"
+  # Check migration status
+  $COMPOSE_CMD exec -T catalog php artisan migrate:status 2>/dev/null | head -10 || true
+fi
+
+# Checkout migrations
+echo -e "${CYAN}  Running checkout migrations...${NC}"
+if $COMPOSE_CMD exec -T checkout php artisan migrate --force 2>/dev/null; then
+  echo -e "${GREEN}  [OK] Checkout migrations completed${NC}"
+else
+  echo -e "${YELLOW}[!] Checkout migration failed or already up to date${NC}"
+  # Check migration status
+  $COMPOSE_CMD exec -T checkout php artisan migrate:status 2>/dev/null | head -10 || true
+fi
+
+# Email migrations
+echo -e "${CYAN}  Running email migrations...${NC}"
+if $COMPOSE_CMD exec -T email php artisan migrate --force 2>/dev/null; then
+  echo -e "${GREEN}  [OK] Email migrations completed${NC}"
+else
+  echo -e "${YELLOW}[!] Email migration failed or already up to date${NC}"
+  # Check migration status
+  $COMPOSE_CMD exec -T email php artisan migrate:status 2>/dev/null | head -10 || true
+fi
+
+# Step 16: Verify Email Configuration
+echo -e "${CYAN}[*] Step 16: Verifying email configuration...${NC}"
+EMAIL_FROM_CONFIG=$($COMPOSE_CMD exec -T email php artisan tinker --execute="echo config('mail.from.address');" 2>/dev/null | grep -v "Tinker" | tr -d '[:space:]' || echo "")
+if [ "$EMAIL_FROM_CONFIG" = "$MAIL_FROM" ]; then
+  echo -e "${GREEN}  [OK] Email FROM address configured correctly: $EMAIL_FROM_CONFIG${NC}"
+else
+  echo -e "${YELLOW}[!] Email FROM address mismatch. Expected: $MAIL_FROM, Got: $EMAIL_FROM_CONFIG${NC}"
+  echo -e "${YELLOW}[!] Clearing email service cache and restarting...${NC}"
+  $COMPOSE_CMD exec -T email php artisan config:clear 2>/dev/null || true
+  $COMPOSE_CMD exec -T email php artisan cache:clear 2>/dev/null || true
+  $COMPOSE_CMD restart email
+  sleep 5
+  # Verify again
+  EMAIL_FROM_CONFIG=$($COMPOSE_CMD exec -T email php artisan tinker --execute="echo config('mail.from.address');" 2>/dev/null | grep -v "Tinker" | tr -d '[:space:]' || echo "")
+  if [ "$EMAIL_FROM_CONFIG" = "$MAIL_FROM" ]; then
+    echo -e "${GREEN}  [OK] Email configuration fixed: $EMAIL_FROM_CONFIG${NC}"
+  else
+    echo -e "${RED}[X] Email configuration still incorrect. Please check manually.${NC}"
+  fi
+fi
+
+# Display email configuration summary
+echo -e "${CYAN}  Email Configuration Summary:${NC}"
+$COMPOSE_CMD exec -T email php artisan tinker --execute="echo '  MAIL_FROM_ADDRESS: ' . config('mail.from.address'); echo PHP_EOL; echo '  MAIL_FROM_NAME: ' . config('mail.from.name'); echo PHP_EOL; echo '  MAIL_HOST: ' . config('mail.mailers.smtp.host'); echo PHP_EOL; echo '  MAIL_PORT: ' . config('mail.mailers.smtp.port');" 2>/dev/null | grep -v "Tinker" || echo -e "${YELLOW}  Could not retrieve email configuration${NC}"
+
+# Step 17: Get Public IP
 PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "localhost")
 
-# Step 14: Test Application
-echo -e "${CYAN}[*] Step 14: Testing application...${NC}"
+# Step 18: Verify Migrations
+echo -e "${CYAN}[*] Step 18: Verifying migrations...${NC}"
+CATALOG_TABLES=$($COMPOSE_CMD exec -T mysql mysql -uappuser -p$MYSQL_APP_PASS catalog_db -e "SHOW TABLES;" 2>/dev/null | wc -l || echo "0")
+CHECKOUT_TABLES=$($COMPOSE_CMD exec -T mysql mysql -uappuser -p$MYSQL_APP_PASS checkout_db -e "SHOW TABLES;" 2>/dev/null | wc -l || echo "0")
+EMAIL_TABLES=$($COMPOSE_CMD exec -T mysql mysql -uappuser -p$MYSQL_APP_PASS email_db -e "SHOW TABLES;" 2>/dev/null | wc -l || echo "0")
+
+if [ "$CATALOG_TABLES" -gt "0" ]; then
+  echo -e "${GREEN}  [OK] Catalog database has tables${NC}"
+else
+  echo -e "${YELLOW}[!] Catalog database appears empty${NC}"
+fi
+
+if [ "$CHECKOUT_TABLES" -gt "0" ]; then
+  echo -e "${GREEN}  [OK] Checkout database has tables${NC}"
+else
+  echo -e "${YELLOW}[!] Checkout database appears empty${NC}"
+fi
+
+if [ "$EMAIL_TABLES" -gt "0" ]; then
+  echo -e "${GREEN}  [OK] Email database has tables${NC}"
+else
+  echo -e "${YELLOW}[!] Email database appears empty${NC}"
+fi
+
+# Step 19: Test Application
+echo -e "${CYAN}[*] Step 19: Testing application...${NC}"
 sleep 5
 if curl -f http://localhost > /dev/null 2>&1; then
   echo -e "${GREEN}[OK] Application is responding!${NC}"
@@ -279,11 +396,32 @@ echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "${CYAN}Application URL: http://$PUBLIC_IP${NC}"
 echo ""
+echo -e "${CYAN}Email Configuration:${NC}"
+echo "  From Address: $MAIL_FROM"
+echo "  From Name: $MAIL_FROM_NAME"
+echo "  Region: $AWS_REGION"
+echo ""
 echo -e "${CYAN}Useful commands:${NC}"
 echo "  docker-compose ps              # Check container status"
 echo "  docker-compose logs -f         # View all logs"
 echo "  docker-compose logs frontend   # View frontend logs"
+echo "  docker-compose logs email      # View email service logs"
 echo "  docker-compose restart catalog # Restart catalog service"
+echo "  docker-compose restart email   # Restart email service"
+echo ""
+echo -e "${CYAN}Test Email Sending:${NC}"
+echo "  curl -X POST http://localhost/api/send-order-confirmation \\"
+echo "    -H 'Content-Type: application/json' \\"
+echo "    -d '{\"order_id\": 123, \"customer_email\": \"$MAIL_FROM\", \"order_data\": {\"items\": [], \"total\": 0}}'"
+echo ""
+echo -e "${CYAN}Check Email Logs:${NC}"
+echo "  docker-compose exec mysql mysql -uappuser -p$MYSQL_APP_PASS email_db -e \"SELECT * FROM email_logs ORDER BY id DESC LIMIT 5;\""
+echo ""
+echo -e "${CYAN}Update Email Configuration:${NC}"
+echo "  1. Edit services/email/.env"
+echo "  2. Run: docker-compose exec email php artisan config:clear"
+echo "  3. Run: docker-compose exec email php artisan cache:clear"
+echo "  4. Run: docker-compose restart email"
 echo ""
 echo -e "${GREEN}[OK] All done!${NC}"
 
