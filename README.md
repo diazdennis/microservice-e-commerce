@@ -126,7 +126,7 @@ A complete e-commerce system built with microservices architecture, featuring pr
 1. **Clone and setup**
    ```bash
    git clone <your-repo-url>
-   cd e-commerce-microservices
+   cd microservice-ecommerce
    ```
 
 2. **Configure Mailtrap**
