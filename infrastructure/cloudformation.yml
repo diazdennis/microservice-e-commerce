@@ -15,8 +15,9 @@ Parameters:
       - t2.micro
 
   LatestAmiId:
-    Type: String
-    Description: "Amazon Linux 2023 AMI ID for your region. The deployment script will automatically fetch this, or you can find it in the EC2 console. To get it manually, run: aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64 --region <your-region> --query Parameter.Value --output text"
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: "Amazon Linux 2023 AMI ID - automatically fetched from SSM Parameter Store"
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64
 
   GitHubRepoUrl:
     Type: String
@@ -64,6 +65,19 @@ Parameters:
     Type: String
     Description: "Email sender name"
     Default: "E-Commerce Store"
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-0c55b159cbfafe1f0
+    us-west-2:
+      AMI: ami-0c55b159cbfafe1f0
+    ap-southeast-1:
+      AMI: ami-0c55b159cbfafe1f0
+    ap-southeast-2:
+      AMI: ami-0c55b159cbfafe1f0
+    eu-west-1:
+      AMI: ami-0c55b159cbfafe1f0
 
 Resources:
   # VPC and Networking
